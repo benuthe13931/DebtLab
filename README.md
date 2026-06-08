@@ -1,75 +1,64 @@
-# DebtLab
+# LoanSim
 
-DebtLab is a debt payoff planner with account-level debt modeling, payoff simulations, statement import helpers, authentication, and per-user saved planner data.
+LoanSim is a client-side loan interest simulator for testing payoff strategies, payment timing, pauses, one-time payments, and what-if scenarios.
 
-## Project Structure
+## Features
 
-- `frontend/` - Vite + TypeScript client
-- `backend/` - NestJS API
-- `data/` and `backend/data/` - local SQLite databases, ignored by git
+- Daily interest payoff modeling
+- Assumed payment schedules
+- Historical payment replay
+- What-if projections
+- Payment pauses, due-day changes, and recurring payment changes
+- Multiple saved loans per local user profile
+- Theme selection and local profile settings
 
-## Local Setup
-
-Install both apps:
-
-```bash
-npm run install:all
-```
-
-Create local env files from the examples:
+## Local Development
 
 ```bash
-copy backend\.env.example backend\.env
-copy frontend\.env.example frontend\.env
+npm install
+npm run dev
 ```
 
-Run the API and frontend in two terminals:
+The app runs at `http://localhost:5173`.
+
+## Build
 
 ```bash
-npm run dev:backend
-npm run dev:frontend
+npm run build
 ```
 
-The frontend runs at `http://localhost:5173` and the API defaults to `http://localhost:8080`.
+The production output is written to `dist/`.
 
-## Demo Login/Data
+## Data And Privacy
 
-The app has email/password registration and login. Passwords are hashed with scrypt in the local database, and session tokens are stored in `localStorage`.
+This version is fully client-side. Saved loans and demo user profiles are stored in the browser with `localStorage` under `loan-sim:*` keys.
 
-New accounts start empty. Use the in-app reset sample data action to load a fake demo portfolio with Chase/Best Buy/CareCredit/Student Loan sample debts. Do not commit local `.db` files because they can contain real emails, hashed passwords, session tokens, statement imports, payments, and debt details.
+Important: the built-in profile/login flow is only a local demo convenience. It is not real authentication, and local profile passwords are not suitable for production account security.
 
-## GitHub Safety Checklist
+## Deployment
 
-Safe to commit:
+This app can deploy to Vercel as a standard Vite project:
 
-- Source files in `frontend/src` and `backend/src`
-- `package.json` and `package-lock.json` files
-- Public assets in `frontend/public`
-- `README.md`, `.gitignore`, and `.env.example` files
+- Framework preset: `Vite`
+- Build command: `npm run build`
+- Output directory: `dist`
+- Install command: `npm install`
+
+No Supabase setup is required for the current client-only version. Supabase would be useful if you want real cloud accounts, cross-device saved loans, and secure authentication.
+
+## GitHub Safety
+
+Commit source and config files, including:
+
+- `src/`
+- `public/`
+- `package.json`
+- `package-lock.json`
+- Vite, TypeScript, ESLint, Tailwind, and PostCSS config files
 
 Do not commit:
 
 - `node_modules/`
-- `dist/`, `build/`, `coverage/`
-- `.env`, `.env.local`, or other real env files
-- `.vercel/`
-- `data/*.db`, `backend/data/*.db`, or SQLite sidecar files
-
-## Deployment Notes
-
-Vercel can deploy the frontend from GitHub automatically. Vercel creates preview deployments for branches and production deployments from the production branch when the repository is connected.
-
-This repo currently uses a Nest backend plus SQLite. SQLite is good for local development, but it is not durable on Vercel serverless deployments because serverless filesystems are ephemeral. For a resume-ready public deployment, use one of these paths:
-
-1. **Recommended:** migrate the backend persistence layer to Supabase/Postgres, then deploy the frontend and API together or deploy the API separately.
-2. **Practical short-term:** deploy the frontend to Vercel and deploy the Nest API on a long-running Node host such as Railway, Render, or Fly.io, with a persistent database.
-3. **Demo-only:** wire the API into Vercel Functions with temporary storage, knowing user-created data will not be reliable.
-
-If deploying the frontend separately from the API, set these Vercel environment variables:
-
-```env
-VITE_API_BASE=https://your-api.example.com/api/planner
-VITE_AUTH_BASE=https://your-api.example.com/api/auth
-```
-
-For a Supabase migration, mirror the EurovisionRanker pattern: keep SQL migrations under `supabase/migrations`, commit `.env.example`, keep real Supabase keys in Vercel environment variables, and do not commit `.env`.
+- `dist/`
+- `.env` or `.env.local`
+- logs or editor-local files
