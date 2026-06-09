@@ -31,9 +31,30 @@ The production output is written to `dist/`.
 
 ## Data And Privacy
 
-This version is fully client-side. Saved loans and demo user profiles are stored in the browser with `localStorage` under `loan-sim:*` keys.
+Without Supabase environment variables, LoanSim is fully client-side. Saved loans and demo user profiles are stored in the browser with `localStorage` under `loan-sim:*` keys.
 
-Important: the built-in profile/login flow is only a local demo convenience. It is not real authentication, and local profile passwords are not suitable for production account security.
+Important: in local-only mode, the profile/login flow is only a demo convenience. Local profile passwords are not suitable for production account security.
+
+With Supabase configured, LoanSim uses Supabase Auth plus Postgres tables for cloud profiles and saved loans. Row Level Security keeps each user's saved loans private to their authenticated Supabase user.
+
+## Supabase Setup
+
+1. Create a new Supabase project.
+2. Open the Supabase SQL editor.
+3. Run the SQL in `supabase/schema.sql`.
+4. Copy `.env.example` to `.env`.
+5. Fill in:
+
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+6. Restart the dev server.
+
+For Vercel, add the same two environment variables in the Vercel project settings before deploying.
+
+The Supabase schema is also stored as a migration in `supabase/migrations/` if you want to manage database changes with the Supabase CLI.
 
 ## Deployment
 
@@ -44,7 +65,7 @@ This app can deploy to Vercel as a standard Vite project:
 - Output directory: `dist`
 - Install command: `npm install`
 
-No Supabase setup is required for the current client-only version. Supabase would be useful if you want real cloud accounts, cross-device saved loans, and secure authentication.
+No Supabase setup is required for local-only demo mode. Supabase is enabled automatically when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are present.
 
 ## GitHub Safety
 

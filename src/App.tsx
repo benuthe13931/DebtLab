@@ -1,5 +1,18 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import {
+  cloudStorageEnabled,
+  cloudStorageStatus,
+  createCloudProfile,
+  deleteCloudProfileData,
+  getCloudSessionProfile,
+  loadCloudLoans,
+  loginCloudProfile,
+  logoutCloudProfile,
+  sendCloudPasswordResetEmail,
+  saveCloudLoans,
+  saveCloudProfile,
+} from "./lib/cloudStorage";
 
 function parseCurrency(value: string): number {
   const cleaned = value.replace(/[$,\s]/g, "");
@@ -236,6 +249,16 @@ type UserProfile = {
   passwordResetIssuedAt?: string;
   themeId: ThemeId;
 };
+
+const asThemeId = (themeId: string | undefined): ThemeId =>
+  themeId === "forest" || themeId === "sunset" || themeId === "midnight" || themeId === "rose" || themeId === "slate"
+    ? themeId
+    : "sky";
+
+const normalizeProfile = (profile: UserProfile): UserProfile => ({
+  ...profile,
+  themeId: asThemeId(profile.themeId),
+});
 
 type ThemeId = "sky" | "forest" | "sunset" | "midnight" | "rose" | "slate";
 
@@ -2176,7 +2199,29 @@ export default function LoanInterestSimulatorMockup() {
     applyLoanSnapshot(createBlankLoanSnapshot());
   };
 
-  const loadLoansForUser = (userId: string) => {
+  const loadLoansForUser = async (userId: string) => {
+    if (cloudStorageEnabled) {
+      try {
+        const parsed = await loadCloudLoans<SavedLoanRecord>(userId);
+        if (parsed.length === 0) {
+          setSavedLoans([]);
+          setCurrentLoanId(null);
+          applyLoanSnapshot(createBlankLoanSnapshot());
+          return;
+        }
+
+        setSavedLoans(parsed);
+        setCurrentLoanId(parsed[0].id);
+        applyLoanSnapshot(parsed[0].data);
+      } catch (error) {
+        setSaveStatus(error instanceof Error ? error.message : "Could not load cloud loans.");
+        setSavedLoans([]);
+        setCurrentLoanId(null);
+        applyLoanSnapshot(createBlankLoanSnapshot());
+      }
+      return;
+    }
+
     try {
       const raw = localStorage.getItem(getSavedLoansStorageKey(userId));
       if (!raw) {
@@ -2203,6 +2248,49 @@ export default function LoanInterestSimulatorMockup() {
   };
 
   useEffect(() => {
+    let isMounted = true;
+    console.info(
+      cloudStorageEnabled
+        ? "LoanSim cloud storage enabled: Supabase env vars are present."
+        : "LoanSim local storage mode: VITE_SUPABASE_URL and/or VITE_SUPABASE_ANON_KEY are missing.",
+      cloudStorageStatus,
+    );
+
+    if (cloudStorageEnabled) {
+      void (async () => {
+        try {
+          const profile = await getCloudSessionProfile();
+          if (!isMounted) return;
+
+          if (!profile) {
+            setSaveStatus("Supabase connected. Sign in or create an account to load cloud loans.");
+            setUserProfiles([]);
+            setCurrentUserId(null);
+            setSavedLoans([]);
+            setCurrentLoanId(null);
+            applyLoanSnapshot(createBlankLoanSnapshot());
+            return;
+          }
+
+          const normalized = normalizeProfile(profile as UserProfile);
+          setUserProfiles([normalized]);
+          setCurrentUserId(normalized.id);
+          await loadLoansForUser(normalized.id);
+        } catch {
+          if (!isMounted) return;
+          setUserProfiles([]);
+          setCurrentUserId(null);
+          setSavedLoans([]);
+          setCurrentLoanId(null);
+          applyLoanSnapshot(createBlankLoanSnapshot());
+        }
+      })();
+
+      return () => {
+        isMounted = false;
+      };
+    }
+
     try {
       const rawProfiles = localStorage.getItem(USER_PROFILES_STORAGE_KEY);
       const parsedProfiles = rawProfiles ? (JSON.parse(rawProfiles) as Partial<UserProfile>[]) : [];
@@ -2217,6 +2305,7 @@ export default function LoanInterestSimulatorMockup() {
             passwordResetIssuedAt: profile.passwordResetIssuedAt,
             themeId: profile.themeId ?? "sky",
           }))
+          .map((profile) => normalizeProfile(profile as UserProfile))
         : [];
       setUserProfiles(validProfiles);
 
@@ -2249,11 +2338,28 @@ export default function LoanInterestSimulatorMockup() {
   const persistSavedLoans = (nextLoans: SavedLoanRecord[], userId = currentUserId) => {
     setSavedLoans(nextLoans);
     if (!userId) return;
+    if (cloudStorageEnabled) {
+      void saveCloudLoans(userId, nextLoans).catch((error) => {
+        setSaveStatus(error instanceof Error ? error.message : "Could not sync cloud loans.");
+      });
+      return;
+    }
     localStorage.setItem(getSavedLoansStorageKey(userId), JSON.stringify(nextLoans));
   };
 
   const persistUserProfiles = (nextProfiles: UserProfile[]) => {
     setUserProfiles(nextProfiles);
+    if (cloudStorageEnabled) {
+      const currentProfile = currentUserId
+        ? nextProfiles.find((profile) => profile.id === currentUserId)
+        : nextProfiles[0];
+      if (currentProfile) {
+        void saveCloudProfile(currentProfile).catch((error) => {
+          setProfileStatus(error instanceof Error ? error.message : "Could not sync cloud profile.");
+        });
+      }
+      return;
+    }
     localStorage.setItem(USER_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles));
   };
 
@@ -2267,7 +2373,9 @@ export default function LoanInterestSimulatorMockup() {
 
   const loginUser = (userId: string, userName: string) => {
     setCurrentUserId(userId);
-    localStorage.setItem(CURRENT_USER_STORAGE_KEY, userId);
+    if (!cloudStorageEnabled) {
+      localStorage.setItem(CURRENT_USER_STORAGE_KEY, userId);
+    }
     setActivePage("simulator");
     setActiveView("assumed");
     setSaveStatus(`Logged in as ${userName}`);
@@ -2278,13 +2386,36 @@ export default function LoanInterestSimulatorMockup() {
     setPasswordResetCodeInput("");
     setPasswordResetNewPassword("");
     setPasswordResetConfirmPassword("");
-    loadLoansForUser(userId);
+    void loadLoansForUser(userId);
   };
 
-  const handleAuthSubmit = () => {
+  const handleAuthSubmit = async () => {
     const trimmedName = authName.trim();
     if (!trimmedName || !authPassword) {
-      setAuthError("Enter both a username and password.");
+      setAuthError(`Enter both an ${cloudStorageEnabled ? "email" : "username"} and password.`);
+      return;
+    }
+
+    if (cloudStorageEnabled) {
+      try {
+        const profile = authMode === "create"
+          ? await createCloudProfile(trimmedName, authPassword)
+          : await loginCloudProfile(trimmedName, authPassword);
+        if (profile.needsEmailConfirmation) {
+          setAuthError("Check your email to confirm the account, then log in.");
+          setAuthPassword("");
+          setAuthMode("login");
+          return;
+        }
+        const normalized = normalizeProfile(profile as UserProfile);
+        setUserProfiles([normalized]);
+        applyLoanSnapshot(createBlankLoanSnapshot());
+        setSavedLoans([]);
+        setCurrentLoanId(null);
+        loginUser(normalized.id, normalized.name);
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : "Authentication failed.");
+      }
       return;
     }
 
@@ -2321,7 +2452,11 @@ export default function LoanInterestSimulatorMockup() {
   };
 
   const logoutUser = () => {
-    localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+    if (cloudStorageEnabled) {
+      void logoutCloudProfile().catch(() => undefined);
+    } else {
+      localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+    }
     setCurrentUserId(null);
     setSavedLoans([]);
     setCurrentLoanId(null);
@@ -2339,11 +2474,20 @@ export default function LoanInterestSimulatorMockup() {
     const confirmed = window.confirm(`Delete profile "${selectedProfile.name}" and all of its saved loans?`);
     if (!confirmed) return;
 
-    localStorage.removeItem(getSavedLoansStorageKey(currentUserId));
+    if (cloudStorageEnabled) {
+      void deleteCloudProfileData(currentUserId).catch((error) => {
+        setSaveStatus(error instanceof Error ? error.message : "Could not delete cloud profile data.");
+      });
+      void logoutCloudProfile().catch(() => undefined);
+    } else {
+      localStorage.removeItem(getSavedLoansStorageKey(currentUserId));
+    }
     const nextProfiles = userProfiles.filter((profile) => profile.id !== currentUserId);
     persistUserProfiles(nextProfiles);
 
-    localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+    if (!cloudStorageEnabled) {
+      localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+    }
     setCurrentUserId(null);
     setSavedLoans([]);
     setCurrentLoanId(null);
@@ -2399,6 +2543,17 @@ export default function LoanInterestSimulatorMockup() {
       setProfileStatus("Add an email address before requesting a password reset.");
       return;
     }
+    if (cloudStorageEnabled) {
+      void sendCloudPasswordResetEmail(email)
+        .then(() => {
+          setProfileDraftEmail(email);
+          setProfileStatus(`Password reset email sent to ${email}. Follow the Supabase email link to finish.`);
+        })
+        .catch((error) => {
+          setProfileStatus(error instanceof Error ? error.message : "Could not send password reset email.");
+        });
+      return;
+    }
     const resetCode = `${Math.floor(100000 + Math.random() * 900000)}`;
     updateCurrentUserProfile((profile) => ({
       ...profile,
@@ -2415,6 +2570,10 @@ export default function LoanInterestSimulatorMockup() {
 
   const applyPasswordReset = () => {
     if (!currentUser) return;
+    if (cloudStorageEnabled) {
+      setProfileStatus("Use the Supabase password reset email link to change your password.");
+      return;
+    }
     if (!currentUser.passwordResetCode) {
       setProfileStatus("Request a password reset email first.");
       return;
@@ -2528,7 +2687,9 @@ export default function LoanInterestSimulatorMockup() {
         <div style={{ display: "grid", gap: 6 }}>
           <h1 style={{ margin: 0, fontSize: 30, lineHeight: 1.1 }}>Loan Interest Simulator</h1>
           <div style={{ color: "#475569", fontSize: 14, lineHeight: 1.5 }}>
-            Sign in to your local account to access your saved loans, or create a new user to start tracking a different set of loans.
+            {cloudStorageEnabled
+              ? "Sign in with Supabase to sync saved loans across browsers and devices."
+              : "Sign in to your local account to access your saved loans, or create a new user to start tracking a different set of loans."}
           </div>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -2566,7 +2727,7 @@ export default function LoanInterestSimulatorMockup() {
           </button>
         </div>
         <div style={{ display: "grid", gap: 12 }}>
-          <Field id="auth-name" label="Username" value={authName} onChange={setAuthName} />
+          <Field id="auth-name" label={cloudStorageEnabled ? "Email" : "Username"} value={authName} onChange={setAuthName} />
           <Field id="auth-password" label="Password" type="password" value={authPassword} onChange={setAuthPassword} />
           {authError ? (
             <div style={{ border: "1px solid #fecaca", background: "#fff1f2", color: "#991b1b", borderRadius: 10, padding: "10px 12px", fontSize: 13 }}>
