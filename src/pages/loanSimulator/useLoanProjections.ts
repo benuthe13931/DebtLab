@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { useMemo } from "react";
 import { accrueInterest } from "../../calculations/loans/accrueInterest";
-import { clampToMonth, parseDate, toDateInputValue } from "../../calculations/loans/dateUtils";
+import { addMonths, clampToMonth, parseDate, toDateInputValue } from "../../calculations/loans/dateUtils";
+import { getNextScheduledPaymentDate } from "../../calculations/loans/schedule";
 import { compareDateOnly } from "../../utils/date";
 import { parseCurrency } from "../../utils/currency";
 import { formatDurationToPayoff, formatTimeShaved } from "../../utils/formatting";
