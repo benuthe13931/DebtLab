@@ -1878,9 +1878,15 @@ export default function LoanInterestSimulatorMockup() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "create">("login");
   const [authName, setAuthName] = useState("");
+  const [authDisplayName, setAuthDisplayName] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [activePage, setActivePage] = useState<"simulator" | "paycheck" | "profile">("simulator");
+  const [activeLoanTab, setActiveLoanTab] = useState<"details" | "assumed" | "history" | "whatif">("details");
+  const [loanSidebarCollapsed, setLoanSidebarCollapsed] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [deleteAccountConfirmOpen, setDeleteAccountConfirmOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [profileDraftName, setProfileDraftName] = useState("");
   const [profileDraftEmail, setProfileDraftEmail] = useState("");
   const [profileStatus, setProfileStatus] = useState("");
@@ -1963,6 +1969,20 @@ export default function LoanInterestSimulatorMockup() {
   const getSavedLoansStorageKey = (userId: string) => `${SAVED_LOANS_STORAGE_KEY}:${userId}`;
   const currentUser = currentUserId ? userProfiles.find((profile) => profile.id === currentUserId) ?? null : null;
   const currentTheme = THEME_DEFINITIONS[currentUser?.themeId ?? "sky"];
+  const displayName = currentUser?.displayName || currentUser?.name.split("@")[0] || "User";
+  const firstName = displayName.split(/\s+/)[0] || "User";
+  const profileInitial = firstName.charAt(0).toUpperCase();
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const closeMenu = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", closeMenu);
+    return () => document.removeEventListener("mousedown", closeMenu);
+  }, [profileMenuOpen]);
 
   const createBlankLoanSnapshot = (): LoanSnapshot => ({
     activeView: "assumed",
@@ -2382,6 +2402,7 @@ export default function LoanInterestSimulatorMockup() {
     setSaveStatus(`Logged in as ${userName}`);
     setAuthError("");
     setAuthName("");
+    setAuthDisplayName("");
     setAuthPassword("");
     setProfileStatus("");
     setPasswordResetCodeInput("");
@@ -2392,6 +2413,7 @@ export default function LoanInterestSimulatorMockup() {
 
   const handleAuthSubmit = async () => {
     const trimmedName = authName.trim();
+    const trimmedDisplayName = authDisplayName.trim();
     if (!trimmedName || !authPassword) {
       setAuthError(`Enter both an ${cloudStorageEnabled ? "email" : "username"} and password.`);
       return;
@@ -2399,8 +2421,12 @@ export default function LoanInterestSimulatorMockup() {
 
     if (cloudStorageEnabled) {
       try {
+        if (authMode === "create" && !trimmedDisplayName) {
+          setAuthError("Enter your name.");
+          return;
+        }
         const profile = authMode === "create"
-          ? await createCloudProfile(trimmedName, authPassword)
+          ? await createCloudProfile(trimmedName, authPassword, trimmedDisplayName)
           : await loginCloudProfile(trimmedName, authPassword);
         if (profile.needsEmailConfirmation) {
           setAuthError("Check your email to confirm the account, then log in.");
@@ -2427,7 +2453,7 @@ export default function LoanInterestSimulatorMockup() {
         return;
       }
       const nextProfile: UserProfile = {
-        displayName: trimmedName,
+        displayName: trimmedDisplayName || trimmedName,
         email: "",
         id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         name: trimmedName,
@@ -2468,18 +2494,19 @@ export default function LoanInterestSimulatorMockup() {
     applyLoanSnapshot(createBlankLoanSnapshot());
   };
 
-  const deleteCurrentUserProfile = () => {
+  const deleteCurrentUserProfile = async () => {
     if (!currentUserId) return;
     const selectedProfile = userProfiles.find((profile) => profile.id === currentUserId);
     if (!selectedProfile) return;
-    const confirmed = window.confirm(`Delete profile "${selectedProfile.name}" and all of its saved loans?`);
-    if (!confirmed) return;
-
     if (cloudStorageEnabled) {
-      void deleteCloudProfileData(currentUserId).catch((error) => {
+      try {
+        await deleteCloudProfileData();
+        await logoutCloudProfile().catch(() => undefined);
+      } catch (error) {
         setSaveStatus(error instanceof Error ? error.message : "Could not delete cloud profile data.");
-      });
-      void logoutCloudProfile().catch(() => undefined);
+        setDeleteAccountConfirmOpen(false);
+        return;
+      }
     } else {
       localStorage.removeItem(getSavedLoansStorageKey(currentUserId));
     }
@@ -2497,6 +2524,7 @@ export default function LoanInterestSimulatorMockup() {
     setAuthName("");
     setAuthPassword("");
     setAuthError("");
+    setDeleteAccountConfirmOpen(false);
     applyLoanSnapshot(createBlankLoanSnapshot());
   };
 
@@ -2630,6 +2658,8 @@ export default function LoanInterestSimulatorMockup() {
     setCurrentLoanId(null);
     setSaveStatus("");
     applyLoanSnapshot(createBlankLoanSnapshot());
+    setActiveLoanTab("details");
+    setActiveView("assumed");
   };
 
   const loadSavedLoan = (loanId: string) => {
@@ -2638,6 +2668,8 @@ export default function LoanInterestSimulatorMockup() {
     setCurrentLoanId(selectedLoan.id);
     setSaveStatus("");
     applyLoanSnapshot(selectedLoan.data);
+    setActiveLoanTab("details");
+    setActiveView("assumed");
   };
 
   const deleteCurrentLoan = () => {
@@ -2696,7 +2728,7 @@ export default function LoanInterestSimulatorMockup() {
         <div style={{ display: "flex", gap: 10 }}>
           <button
             type="button"
-            onClick={() => { setAuthMode("login"); setAuthError(""); }}
+            onClick={() => { setAuthMode("login"); setAuthError(""); setAuthDisplayName(""); }}
             style={{
               border: authMode === "login" ? "1px solid var(--app-accent, #2563eb)" : "1px solid #cbd5e1",
               background: authMode === "login" ? "var(--app-accent-soft, #dbeafe)" : "#ffffff",
@@ -2728,6 +2760,7 @@ export default function LoanInterestSimulatorMockup() {
           </button>
         </div>
         <div style={{ display: "grid", gap: 12 }}>
+          {authMode === "create" ? <Field id="auth-display-name" label="Your name" value={authDisplayName} onChange={setAuthDisplayName} /> : null}
           <Field id="auth-name" label={cloudStorageEnabled ? "Email" : "Username"} value={authName} onChange={setAuthName} />
           <Field id="auth-password" label="Password" type="password" value={authPassword} onChange={setAuthPassword} />
           {authError ? (
@@ -3924,212 +3957,35 @@ export default function LoanInterestSimulatorMockup() {
           gap: 24,
         }}
       >
-        <header style={{ display: "flex", gap: 16, alignItems: "center", textAlign: "left" }}>
-          <div
-            aria-hidden="true"
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 14,
-              background: `linear-gradient(135deg, ${currentTheme.accent}, ${currentTheme.accent})`,
-              boxShadow: currentTheme.cardShadow,
-              flexShrink: 0,
-            }}
-          />
-          <div>
-            <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.1 }}>DebtLab</h1>
-            <p style={{ margin: "8px 0 0", color: currentTheme.textMuted, maxWidth: 800 }}>
-              {activePage === "paycheck"
-                ? "Estimate take-home pay now and after future benefit or retirement changes."
-                : "Model loan payments, compare real payment history, and test future payoff choices."}
-            </p>
+        <header style={{ display: "flex", gap: 20, alignItems: "center", justifyContent: "space-between", textAlign: "left" }}>
+          <button type="button" onClick={() => { setActivePage("simulator"); setActiveLoanTab("details"); setActiveView("assumed"); }} style={{ display: "flex", gap: 14, alignItems: "center", border: 0, padding: 0, background: "transparent", color: currentTheme.text, cursor: "pointer", textAlign: "left" }}>
+            <span aria-hidden="true" style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${currentTheme.accent}, ${currentTheme.accent})`, boxShadow: currentTheme.cardShadow, flexShrink: 0 }} />
+            <span>
+              <span style={{ display: "block", fontSize: 34, fontWeight: 750, lineHeight: 1.1 }}>DebtLab</span>
+              <span style={{ display: "block", marginTop: 6, color: currentTheme.textMuted, fontSize: 15 }}>
+                {activePage === "paycheck" ? "Estimate take-home pay and future changes." : activePage === "profile" ? "Manage your account and preferences." : "Model loan payments and plan your payoff."}
+              </span>
+            </span>
+          </button>
+          <div ref={profileMenuRef} style={{ position: "relative" }}>
+            <button type="button" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)} style={{ display: "flex", gap: 10, alignItems: "center", border: `1px solid ${currentTheme.cardBorder}`, background: currentTheme.surface, color: currentTheme.text, borderRadius: 999, padding: "7px 12px 7px 7px", fontWeight: 700, cursor: "pointer", boxShadow: currentTheme.cardShadow }}>
+              <span aria-hidden="true" style={{ width: 34, height: 34, display: "grid", placeItems: "center", borderRadius: "50%", background: currentTheme.accent, color: "#fff", fontSize: 14 }}>{profileInitial}</span>
+              <span>Welcome, {firstName}</span>
+              <span aria-hidden="true" style={{ fontSize: 11, color: currentTheme.textMuted }}>{profileMenuOpen ? "▲" : "▼"}</span>
+            </button>
+            {profileMenuOpen ? (
+              <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 30, width: 220, padding: 8, display: "grid", gap: 4, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 14, background: currentTheme.surface, boxShadow: "0 18px 40px rgba(15, 23, 42, 0.18)" }}>
+                {[
+                  { label: "View profile", action: () => setActivePage("profile") },
+                  { label: "Paycheck estimator", action: () => setActivePage("paycheck") },
+                  { label: "Log out", action: logoutUser },
+                ].map((item) => (
+                  <button key={item.label} type="button" onClick={() => { setProfileMenuOpen(false); item.action(); }} style={{ border: 0, borderRadius: 9, padding: "10px 12px", background: "transparent", color: currentTheme.text, textAlign: "left", fontWeight: 600, cursor: "pointer" }}>{item.label}</button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </header>
-
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => { setActivePage("simulator"); setActiveView("assumed"); }}
-              style={{
-                border: activePage === "simulator" && activeView === "assumed" ? `1px solid ${currentTheme.accent}` : `1px solid ${currentTheme.cardBorder}`,
-                background: activePage === "simulator" && activeView === "assumed" ? currentTheme.accentSoft : currentTheme.surface,
-                color: currentTheme.text,
-                borderRadius: 999,
-                padding: "10px 16px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Assumed Schedule
-            </button>
-            <button
-              type="button"
-              onClick={() => { setActivePage("simulator"); setActiveView("history"); }}
-              style={{
-                border: activePage === "simulator" && activeView === "history" ? `1px solid ${currentTheme.accent}` : `1px solid ${currentTheme.cardBorder}`,
-                background: activePage === "simulator" && activeView === "history" ? currentTheme.accentSoft : currentTheme.surface,
-                color: currentTheme.text,
-                borderRadius: 999,
-                padding: "10px 16px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Payment History Helper
-            </button>
-            <button
-              type="button"
-              onClick={() => { setActivePage("simulator"); setActiveView("whatif"); }}
-              style={{
-                border: activePage === "simulator" && activeView === "whatif" ? `1px solid ${currentTheme.accent}` : `1px solid ${currentTheme.cardBorder}`,
-                background: activePage === "simulator" && activeView === "whatif" ? currentTheme.accentSoft : currentTheme.surface,
-                color: currentTheme.text,
-                borderRadius: 999,
-                padding: "10px 16px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              What If
-            </button>
-            <button
-              type="button"
-              onClick={() => setActivePage("paycheck")}
-              style={{
-                border: activePage === "paycheck" ? `1px solid ${currentTheme.accent}` : `1px solid ${currentTheme.cardBorder}`,
-                background: activePage === "paycheck" ? currentTheme.accentSoft : currentTheme.surface,
-                color: currentTheme.text,
-                borderRadius: 999,
-                padding: "10px 16px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Paycheck Estimate
-            </button>
-            <button
-              type="button"
-              onClick={() => setActivePage("profile")}
-              style={{
-                border: activePage === "profile" ? `1px solid ${currentTheme.accent}` : `1px solid ${currentTheme.cardBorder}`,
-                background: activePage === "profile" ? currentTheme.accentSoft : currentTheme.surface,
-                color: currentTheme.text,
-                borderRadius: 999,
-                padding: "10px 16px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Profile
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ fontSize: 13, color: currentTheme.textMuted, fontWeight: 600 }}>
-              Signed in as {currentUser?.displayName || currentUser?.name || "User"}
-            </div>
-            <button
-              type="button"
-              onClick={logoutUser}
-              style={{
-                border: `1px solid ${currentTheme.cardBorder}`,
-                background: currentTheme.surface,
-                color: currentTheme.text,
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Logout
-            </button>
-            <button
-              type="button"
-              onClick={deleteCurrentUserProfile}
-              style={{
-                border: "1px solid #ef4444",
-                background: currentTheme.surface,
-                color: "#b91c1c",
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-                Delete user
-              </button>
-            {activePage === "simulator" ? <>
-            <select
-              value={currentLoanId ?? "__new__"}
-              onChange={(event) => {
-                if (event.target.value === "__new__") {
-                  startNewLoan();
-                  return;
-                }
-                loadSavedLoan(event.target.value);
-              }}
-              style={{
-                border: `1px solid ${currentTheme.cardBorder}`,
-                borderRadius: 10,
-                padding: "10px 12px",
-                fontSize: 14,
-                background: currentTheme.surface,
-                color: currentTheme.text,
-                minWidth: 220,
-              }}
-            >
-              <option value="__new__">Add new loan</option>
-              {savedLoans.map((loan) => (
-                <option key={loan.id} value={loan.id}>
-                  {loan.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={saveCurrentLoan}
-              style={{
-                border: `1px solid ${currentTheme.accent}`,
-                background: currentTheme.accent,
-                color: "#ffffff",
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {currentLoanId ? "Update loan" : "Save loan"}
-            </button>
-            {currentLoanId ? (
-              <button
-                type="button"
-                onClick={deleteCurrentLoan}
-                style={{
-                  border: "1px solid #ef4444",
-                  background: currentTheme.surface,
-                  color: "#b91c1c",
-                  borderRadius: 10,
-                  padding: "10px 14px",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Delete loan
-              </button>
-            ) : null}
-            {saveStatus ? <div style={{ fontSize: 12, color: currentTheme.textMuted }}>{saveStatus}</div> : null}
-            </> : null}
-          </div>
-        </div>
         {activePage === "profile" ? (
           <main
             style={{
@@ -4238,6 +4094,13 @@ export default function LoanInterestSimulatorMockup() {
                     >
                       Save profile
                     </button>
+                    <div style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${currentTheme.cardBorder}`, display: "grid", gap: 8 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: currentTheme.text }}>Delete account</div>
+                      <div style={{ fontSize: 12, lineHeight: 1.5, color: currentTheme.textMuted }}>Permanently remove your profile and all saved loan data.</div>
+                      <button type="button" onClick={() => setDeleteAccountConfirmOpen(true)} style={{ justifySelf: "start", border: "1px solid #ef4444", background: currentTheme.surface, color: "#b91c1c", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                        Delete account
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -4392,14 +4255,37 @@ export default function LoanInterestSimulatorMockup() {
         ) : activePage === "paycheck" ? (
           <PaycheckPage userId={currentUserId} />
         ) : (
-        <main
-          style={{
-            display: "grid",
-            gap: 24,
-            gridTemplateColumns: "360px minmax(0, 1fr)",
-            alignItems: "start",
-          }}
-        >
+        <main style={{ display: "grid", gap: 20, gridTemplateColumns: loanSidebarCollapsed ? "72px minmax(0, 1fr)" : "260px minmax(0, 1fr)", alignItems: "start" }}>
+          <aside style={{ position: "sticky", top: 16, minHeight: 420, padding: loanSidebarCollapsed ? 10 : 16, display: "grid", alignContent: "start", gap: 14, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 18, background: currentTheme.surface, boxShadow: currentTheme.cardShadow }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: loanSidebarCollapsed ? "center" : "space-between", gap: 8 }}>
+              {!loanSidebarCollapsed ? <strong style={{ fontSize: 16 }}>Your loans</strong> : null}
+              <button type="button" aria-label={loanSidebarCollapsed ? "Expand loan sidebar" : "Collapse loan sidebar"} onClick={() => setLoanSidebarCollapsed((collapsed) => !collapsed)} style={{ width: 36, height: 36, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, background: currentTheme.surfaceMuted, color: currentTheme.text, cursor: "pointer", fontWeight: 800 }}>{loanSidebarCollapsed ? "›" : "‹"}</button>
+            </div>
+            <button type="button" onClick={startNewLoan} title="Add loan" style={{ display: "flex", justifyContent: loanSidebarCollapsed ? "center" : "flex-start", alignItems: "center", gap: 9, width: "100%", border: `1px solid ${currentTheme.accent}`, borderRadius: 11, padding: loanSidebarCollapsed ? "10px 0" : "10px 12px", background: currentTheme.accent, color: "#fff", fontWeight: 750, cursor: "pointer" }}>
+              <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>{!loanSidebarCollapsed ? "Add loan" : null}
+            </button>
+            <div style={{ display: "grid", gap: 7 }}>
+              {!currentLoanId && loanName ? <div style={{ padding: loanSidebarCollapsed ? "10px 0" : "10px 12px", textAlign: loanSidebarCollapsed ? "center" : "left", borderRadius: 10, background: currentTheme.accentSoft, color: currentTheme.text, fontSize: 13, fontWeight: 700 }} title="Unsaved loan">{loanSidebarCollapsed ? "•" : `${loanName || "New loan"} (draft)`}</div> : null}
+              {savedLoans.map((loan) => {
+                const selected = loan.id === currentLoanId;
+                return <button key={loan.id} type="button" title={loan.name} onClick={() => loadSavedLoan(loan.id)} style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: loanSidebarCollapsed ? "center" : "left", border: selected ? `1px solid ${currentTheme.accent}` : "1px solid transparent", borderRadius: 10, padding: loanSidebarCollapsed ? "10px 0" : "10px 12px", background: selected ? currentTheme.accentSoft : "transparent", color: currentTheme.text, fontWeight: selected ? 750 : 600, cursor: "pointer" }}>{loanSidebarCollapsed ? loan.name.charAt(0).toUpperCase() : loan.name}</button>;
+              })}
+              {savedLoans.length === 0 && !loanSidebarCollapsed ? <div style={{ padding: "12px 4px", color: currentTheme.textMuted, fontSize: 12, lineHeight: 1.5 }}>Add your first loan to begin building a payoff plan.</div> : null}
+            </div>
+            {!loanSidebarCollapsed && saveStatus ? <div style={{ fontSize: 12, color: currentTheme.textMuted, lineHeight: 1.4 }}>{saveStatus}</div> : null}
+          </aside>
+          <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
+            <nav aria-label="Loan workspace" style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: 6, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 14, background: currentTheme.surface, boxShadow: currentTheme.cardShadow }}>
+              {([
+                ["details", "Loan Details"],
+                ["assumed", "Assumed Schedule"],
+                ["history", "Payment History Helper"],
+                ["whatif", "What If"],
+              ] as const).map(([tab, label]) => (
+                <button key={tab} type="button" onClick={() => { setActiveLoanTab(tab); if (tab !== "details") setActiveView(tab); else setActiveView("assumed"); }} style={{ border: activeLoanTab === tab ? `1px solid ${currentTheme.accent}` : "1px solid transparent", borderRadius: 10, padding: "10px 14px", background: activeLoanTab === tab ? currentTheme.accentSoft : "transparent", color: currentTheme.text, fontWeight: 700, cursor: "pointer" }}>{label}</button>
+              ))}
+            </nav>
+            <div style={{ display: "grid", gap: 24, gridTemplateColumns: activeLoanTab === "assumed" ? "minmax(0, 1fr)" : "360px minmax(0, 1fr)", alignItems: "start", minWidth: 0 }}>
           <section
             style={{
               background: currentTheme.surface,
@@ -4407,19 +4293,19 @@ export default function LoanInterestSimulatorMockup() {
               borderRadius: 18,
               padding: 20,
               textAlign: "left",
-              display: "grid",
+              display: activeLoanTab === "assumed" ? "none" : "grid",
               gap: 16,
               boxShadow: currentTheme.cardShadow,
             }}
           >
             <h2 style={{ margin: 0, fontSize: 22 }}>
-              {activeView === "assumed"
-                ? "Loan Setup"
-                : activeView === "history"
+              {activeLoanTab === "details"
+                ? "Loan Details"
+                : activeLoanTab === "history"
                   ? "Payment History Helper"
                   : "What If"}
             </h2>
-            {activeView === "assumed" ? (
+            {activeLoanTab === "details" ? (
               <>
                 <FormSection title="Loan basics">
                   <Field label="Loan name" id="loan-name" value={loanName} onChange={setLoanName} />
@@ -4463,10 +4349,12 @@ export default function LoanInterestSimulatorMockup() {
                   </div>
                 </FormSection>
                 <FormSection title="Actions">
+                  <button type="button" onClick={saveCurrentLoan} style={{ border: `1px solid ${currentTheme.accent}`, background: currentTheme.accent, color: "#fff", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{currentLoanId ? "Save changes" : "Create loan"}</button>
                   <button type="button" onClick={resetAll} style={{ border: `1px solid ${currentTheme.cardBorder}`, background: currentTheme.surface, color: currentTheme.text, borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Reset all inputs</button>
+                  {currentLoanId ? <button type="button" onClick={deleteCurrentLoan} style={{ border: "1px solid #ef4444", background: currentTheme.surface, color: "#b91c1c", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Delete loan</button> : null}
                 </FormSection>
               </>
-            ) : activeView === "history" ? (
+            ) : activeLoanTab === "history" ? (
               <>
                 <div
                   style={{
@@ -4780,7 +4668,7 @@ export default function LoanInterestSimulatorMockup() {
                   Reset all changes
                 </button>
               </>
-            ) : (
+            ) : activeLoanTab === "whatif" ? (
               <>
                 <div
                   style={{
@@ -4989,7 +4877,7 @@ export default function LoanInterestSimulatorMockup() {
                   Reset all changes
                 </button>
               </>
-            )}
+            ) : null}
           </section>
 
           <section style={{ display: "grid", gap: 24, textAlign: "left", width: "100%", minWidth: 0 }}>
@@ -6149,8 +6037,24 @@ export default function LoanInterestSimulatorMockup() {
               </>
             )}
           </section>
+            </div>
+          </div>
         </main>
         )}
+        {deleteAccountConfirmOpen ? (
+          <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteAccountConfirmOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 100, display: "grid", placeItems: "center", padding: 20, background: "rgba(15, 23, 42, 0.58)" }}>
+            <div role="alertdialog" aria-modal="true" aria-labelledby="delete-account-title" style={{ width: "min(460px, 100%)", display: "grid", gap: 18, padding: 24, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 18, background: currentTheme.surface, boxShadow: "0 28px 70px rgba(15, 23, 42, 0.3)" }}>
+              <div style={{ display: "grid", gap: 8 }}>
+                <h2 id="delete-account-title" style={{ margin: 0, fontSize: 22 }}>Delete your account?</h2>
+                <p style={{ margin: 0, color: currentTheme.textMuted, lineHeight: 1.6 }}>This permanently deletes your profile, saved loans, and paycheck plans. This action is irreversible.</p>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <button type="button" onClick={() => setDeleteAccountConfirmOpen(false)} style={{ border: `1px solid ${currentTheme.cardBorder}`, background: currentTheme.surface, color: currentTheme.text, borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                <button type="button" onClick={() => void deleteCurrentUserProfile()} style={{ border: "1px solid #dc2626", background: "#dc2626", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>Delete account</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

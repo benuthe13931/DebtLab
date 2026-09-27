@@ -68,10 +68,10 @@ export const getCloudSessionProfile = async () => {
   return mapProfile(data);
 };
 
-export const createCloudProfile = async (email: string, password: string) => {
+export const createCloudProfile = async (email: string, password: string, requestedDisplayName?: string) => {
   const client = assertClient();
   const normalizedEmail = email.trim().toLowerCase();
-  const displayName = normalizedEmail.split("@")[0] || normalizedEmail;
+  const displayName = requestedDisplayName?.trim() || normalizedEmail.split("@")[0] || normalizedEmail;
 
   const { data: signUpData, error: signUpError } = await client.auth.signUp({
     email: normalizedEmail,
@@ -168,13 +168,10 @@ export const saveCloudProfile = async (profile: CloudUserProfile) => {
   return mapProfile(data);
 };
 
-export const deleteCloudProfileData = async (userId: string) => {
+export const deleteCloudProfileData = async () => {
   const client = assertClient();
-  const loansResult = await client.from("saved_loans").delete().eq("user_id", userId);
-  if (loansResult.error) throw loansResult.error;
-
-  const profileResult = await client.from("profiles").delete().eq("id", userId);
-  if (profileResult.error) throw profileResult.error;
+  const { error } = await client.rpc("delete_own_account");
+  if (error) throw error;
 };
 
 export const loadCloudLoans = async <T extends CloudSavedLoanRecord>(userId: string): Promise<T[]> => {
