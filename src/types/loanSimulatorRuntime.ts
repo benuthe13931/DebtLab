@@ -1,6 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { ThemeDefinition } from "../constants/theme";
-import type { SavedLoanRecord } from "./loans";
+import type { PaymentEvent, SavedLoanRecord } from "./loans";
 
 /** Shared boundary contract for simulator state, projections, and actions. */
 export interface LoanSimulatorRuntime {
@@ -9,6 +9,7 @@ export interface LoanSimulatorRuntime {
   activeLoanTab: "details" | "transactions" | "history" | "whatif";
   activeView: "assumed" | "history" | "whatif";
   currentLoanId: string | null;
+  creditCardTransactions: PaymentEvent[];
   currentTheme: ThemeDefinition;
   deleteAccountConfirmOpen: boolean;
   deleteCurrentUserProfile?: () => void | Promise<void>;
@@ -22,6 +23,7 @@ export interface LoanSimulatorRuntime {
   savedLoans: SavedLoanRecord[];
   saveStatus: string;
   setActivePage: Dispatch<SetStateAction<LoanSimulatorRuntime["activePage"]>>;
+  setCreditCardTransactions: Dispatch<SetStateAction<PaymentEvent[]>>;
   setDeleteAccountConfirmOpen: Dispatch<SetStateAction<boolean>>;
   setActiveLoanTab: Dispatch<SetStateAction<LoanSimulatorRuntime["activeLoanTab"]>>;
   setActiveView: Dispatch<SetStateAction<LoanSimulatorRuntime["activeView"]>>;
