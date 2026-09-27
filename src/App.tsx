@@ -11,6 +11,7 @@ import { simulatePortfolio, type PortfolioStrategy } from "./calculations/debt/s
 import { accrueInterest } from "./calculations/loans/accrueInterest";
 import { addMonths, clampToMonth, formatMonth, parseDate, toDateInputValue } from "./calculations/loans/dateUtils";
 import { buildSchedule, getNextScheduledPaymentDate } from "./calculations/loans/schedule";
+import { buildCreditCardSchedule } from "./calculations/cards/buildCreditCardSchedule";
 import {
   cloudStorageEnabled,
   cloudStorageStatus,
@@ -1395,6 +1396,12 @@ export default function LoanInterestSimulatorMockup() {
     if (due <= base) due = new Date(base.getFullYear(), base.getMonth() + 1, day);
     return toDateInputValue(due);
   })();
+  const cardScheduleTarget = (() => {
+    if (accountType !== "credit-card") return targetDate;
+    const start = parseDate(cardScheduleStart);
+    const target = parseDate(targetDate);
+    return start && target && target < start ? cardScheduleStart : targetDate;
+  })();
   const deferredStartingPrincipal = useDeferredValue(startingPrincipal);
   const deferredStartingPrincipalDate = useDeferredValue(cardScheduleStart);
   const deferredFirstPaymentDate = useDeferredValue(cardScheduleFirstPayment);
@@ -1402,7 +1409,7 @@ export default function LoanInterestSimulatorMockup() {
   const deferredAdditionalMonthlyPayment = useDeferredValue(additionalMonthlyPayment);
   const deferredAprPercent = useDeferredValue(aprPercent);
   const deferredDueDay = useDeferredValue(dueDay);
-  const deferredTargetDate = useDeferredValue(targetDate);
+  const deferredTargetDate = useDeferredValue(cardScheduleTarget);
   const cardMinimumPayment = accountType === "credit-card"
     ? (cardMinimumMode === "percent"
       ? Math.max(parseCurrency(cardMinimumFloor), parseCurrency(deferredStartingPrincipal) * (Number(cardMinimumPercent) || 0) / 100)
@@ -1410,6 +1417,24 @@ export default function LoanInterestSimulatorMockup() {
     : parseCurrency(deferredMinimumPayment);
   const effectiveMinimumPayment = accountType === "credit-card" ? cardMinimumPayment.toFixed(2) : deferredMinimumPayment;
   const totalMonthlyPayment = (parseCurrency(effectiveMinimumPayment) + parseCurrency(deferredAdditionalMonthlyPayment)).toFixed(2);
+  const buildProjection = (input: Parameters<typeof buildSchedule>[0]) => accountType === "credit-card"
+    ? buildCreditCardSchedule({
+      startingPrincipal: input.startingPrincipal,
+      startingPrincipalDate: input.startingPrincipalDate,
+      targetDate: input.targetDate,
+      firstPaymentDate: input.firstPaymentDate,
+      dueDay: input.dueDay,
+      aprPercent: Number(deferredAprPercent) || 0,
+      minimumMode: cardMinimumMode,
+      minimumPercent: Number(cardMinimumPercent) || 0,
+      minimumFloor: parseCurrency(cardMinimumFloor),
+      fixedMinimum: parseCurrency(minimumPayment),
+      extraPayment: parseCurrency(deferredAdditionalMonthlyPayment),
+      promoType,
+      promoEndDate: promoEndDate ? parseDate(promoEndDate) ?? undefined : undefined,
+      transactions: [...creditCardTransactions, ...input.actualPayments],
+    })
+    : buildSchedule(input);
   const todayDate = startOfDay(new Date());
   const todayValue = toDateInputValue(todayDate);
   const getSavedLoansStorageKey = (userId: string) => `${SAVED_LOANS_STORAGE_KEY}:${userId}`;
@@ -2249,7 +2274,7 @@ export default function LoanInterestSimulatorMockup() {
 
   const assumedResult = useMemo(
     () =>
-      buildSchedule({
+      buildProjection({
         actualPayments: [],
         startingPrincipal: parseCurrency(deferredStartingPrincipal),
         startingPrincipalDate: parseDate(deferredStartingPrincipalDate) ?? new Date(),
@@ -2279,7 +2304,7 @@ export default function LoanInterestSimulatorMockup() {
 
   const minimumOnlyToDateProjection = useMemo(
     () =>
-      buildSchedule({
+      buildProjection({
         actualPayments: [],
         appendAsOfRow: true,
         startingPrincipal: parseCurrency(deferredStartingPrincipal),
@@ -2337,7 +2362,7 @@ export default function LoanInterestSimulatorMockup() {
       };
     }
 
-    return buildSchedule({
+    return buildProjection({
       actualPayments: [],
       startingPrincipal: assumedResult.currentPrincipal,
       startingInterest: assumedResult.currentInterest,
@@ -2375,7 +2400,7 @@ export default function LoanInterestSimulatorMockup() {
 
   const minimumOnlyFullProjection = useMemo(
     () =>
-      buildSchedule({
+      buildProjection({
         actualPayments: [],
         startingPrincipal: parseCurrency(deferredStartingPrincipal),
         startingPrincipalDate: parseDate(deferredStartingPrincipalDate) ?? new Date(),
@@ -2405,7 +2430,7 @@ export default function LoanInterestSimulatorMockup() {
 
   const assumedFullProjection = useMemo(
     () =>
-      buildSchedule({
+      buildProjection({
         actualPayments: [],
         startingPrincipal: parseCurrency(deferredStartingPrincipal),
         startingPrincipalDate: parseDate(deferredStartingPrincipalDate) ?? new Date(),
@@ -2435,7 +2460,7 @@ export default function LoanInterestSimulatorMockup() {
 
   const historyResult = useMemo(
     () =>
-      buildSchedule({
+      buildProjection({
         actualPayments: helperPaymentsThroughTarget,
         appendAsOfRow: true,
         startingPrincipal: parseCurrency(deferredStartingPrincipal),
@@ -2503,7 +2528,7 @@ export default function LoanInterestSimulatorMockup() {
       };
     }
 
-    return buildSchedule({
+    return buildProjection({
       actualPayments: helperVisiblePayments.filter((payment) => payment.date > target),
       appendAsOfRow: false,
       startingPrincipal: historyResult.currentPrincipal,
@@ -2567,7 +2592,7 @@ export default function LoanInterestSimulatorMockup() {
       };
     }
 
-    return buildSchedule({
+    return buildProjection({
       actualPayments: helperVisiblePayments.filter((payment) => payment.date > target),
       appendAsOfRow: false,
       startingPrincipal: historyResult.currentPrincipal,
@@ -2697,7 +2722,7 @@ export default function LoanInterestSimulatorMockup() {
       };
     }
 
-    return buildSchedule({
+    return buildProjection({
       actualPayments: whatIfAllPayments
         .filter((payment) => payment.date > target)
         .sort((a, b) => a.date.getTime() - b.date.getTime()),
@@ -5453,6 +5478,7 @@ export default function LoanInterestSimulatorMockup() {
     </div>
   );
 }
+
 
 
 
