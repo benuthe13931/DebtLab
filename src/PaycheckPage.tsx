@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { DateField } from "./components/DateField";
 import { cloudStorageEnabled, loadCloudPaycheckPlan, saveCloudPaycheckPlan } from "./lib/cloudStorage";
 import {
-  estimateAnnualFederalTax,
   estimatePaycheck,
   resolveStateWithholding,
   type FilingStatus,
   type PayFrequency,
   type PaycheckInputs,
   type PaycheckResult,
-} from "./lib/paycheck";
+} from "./calculations/paycheck/paycheck";
+import { estimateAnnualFederalTax } from "./calculations/tax/annualFederalTax";
 
 export type PaycheckScenario = {
   endDate: string;
