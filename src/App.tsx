@@ -114,6 +114,11 @@ type SerializedDueDayChange = Omit<DueDayChange, "endMonth" | "startMonth"> & {
 
 type LoanSnapshot = {
   accountType?: "loan" | "credit-card";
+  cardMinimumMode?: "percent" | "fixed";
+  cardMinimumPercent?: string;
+  cardMinimumFloor?: string;
+  cardStatementDate?: string;
+  creditCardTransactions?: SerializedPaymentEvent[];
   activeView: "assumed" | "history" | "whatif";
   additionalMonthlyPayment: string;
   aprPercent: string;
@@ -1151,6 +1156,23 @@ function FormSection({
 }
 
 function estimateSavedLoanBalance(data: LoanSnapshot) {
+  if (data.accountType === "credit-card") {
+    let balance = parseCurrency(data.startingPrincipal);
+    const start = parseDate(data.startingPrincipalDate) ?? new Date();
+    const target = parseDate(data.targetDate) ?? new Date();
+    const promoEnd = parseDate(data.promoEndDate ?? "");
+    const months = Math.max(0, (target.getFullYear() - start.getFullYear()) * 12 + target.getMonth() - start.getMonth());
+    const entries = [...(data.creditCardTransactions ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+    for (const entry of entries) { const date = parseDate(entry.date); if (date && date <= target && date >= start) balance += entry.source === "history" ? entry.amount : -entry.amount; }
+    for (let month = 0; month < months && balance > 0; month += 1) {
+      const at = new Date(start.getFullYear(), start.getMonth() + month, 1);
+      const promoActive = promoEnd && data.promoType !== "none" && at <= promoEnd;
+      if (!promoActive || data.promoType === "deferred") balance += balance * (Number(data.aprPercent) || 0) / 100 / 12;
+      const minimum = data.cardMinimumMode === "percent" ? Math.max(parseCurrency(data.cardMinimumFloor ?? "0"), balance * (Number(data.cardMinimumPercent) || 0) / 100) : parseCurrency(data.minimumPayment);
+      balance = Math.max(0, balance - minimum - parseCurrency(data.additionalMonthlyPayment));
+    }
+    return Math.max(0, balance);
+  }
   return calculateSavedLoanBalance({
     aprPercent: Number(data.aprPercent) || 0,
     additionalMonthlyPayment: parseCurrency(data.additionalMonthlyPayment),
@@ -1160,6 +1182,15 @@ function estimateSavedLoanBalance(data: LoanSnapshot) {
     startingPrincipalDate: parseDate(data.startingPrincipalDate),
     targetDate: parseDate(data.targetDate),
   });
+}
+
+function CreditCardActivityEditor({ theme, transactions, onChange }: { theme: ThemeDefinition; transactions: PaymentEvent[]; onChange: (next: PaymentEvent[]) => void }) {
+  const [date, setDate] = useState("");
+  const [amount, setAmount] = useState("");
+  const [label, setLabel] = useState("Purchase");
+  const [kind, setKind] = useState<"charge" | "payment">("charge");
+  const add = () => { const value = parseCurrency(amount); if (!date || value <= 0) return; onChange([...transactions, { id: crypto.randomUUID(), date: parseDate(date) ?? new Date(), amount: value, label: label.trim() || (kind === "charge" ? "Purchase" : "Standalone payment"), source: kind === "charge" ? "history" : "extra" }]); setAmount(""); setDate(""); };
+  return <div style={{ gridColumn: "1 / -1", display: "grid", gap: 12, padding: 14, borderRadius: 14, background: theme.surfaceMuted, border: `1px solid ${theme.cardBorder}` }}><div><strong>Transactions and standalone payments</strong><div style={{ marginTop: 4, fontSize: 12, color: theme.textMuted }}>Record purchases, fees, credits, and payments outside the recurring minimum. These entries change the balance independently of the monthly minimum rule.</div></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}><label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Entry type</span><select value={kind} onChange={(event) => setKind(event.target.value as "charge" | "payment")} style={{ boxSizing: "border-box", width: "100%", border: `1px solid ${theme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: theme.surface, color: theme.text }}><option value="charge">Purchase or fee</option><option value="payment">Standalone payment</option></select></label><DateField id="card-activity-date" label="Date" value={date} onChange={setDate} /><CurrencyField id="card-activity-amount" label="Amount" value={amount} onChange={setAmount} /><Field id="card-activity-label" label="Memo" value={label} onChange={setLabel} /></div><button type="button" onClick={add} style={{ justifySelf: "start", border: `1px solid ${theme.accent}`, background: theme.accent, color: "#fff", borderRadius: 9, padding: "9px 12px", fontWeight: 700, cursor: "pointer" }}>Add entry</button>{transactions.length ? <div style={{ display: "grid", gap: 6 }}>{transactions.slice().sort((a, b) => a.date.getTime() - b.date.getTime()).map((entry) => <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 10px", borderRadius: 9, background: theme.surface, border: `1px solid ${theme.cardBorder}` }}><span>{toDateInputValue(entry.date)} · {entry.label}</span><span><strong>{formatCurrency(entry.amount)}</strong><button type="button" onClick={() => onChange(transactions.filter((item) => item.id !== entry.id))} style={{ marginLeft: 8, border: 0, background: "transparent", color: "#b91c1c", cursor: "pointer" }}>×</button></span></div>)}</div> : null}</div>;
 }
 
 function DebtOverview({ loans, theme, userId }: { loans: SavedLoanRecord[]; theme: ThemeDefinition; userId: string }) {
@@ -1290,6 +1321,11 @@ export default function LoanInterestSimulatorMockup() {
   const [accountType, setAccountType] = useState<"loan" | "credit-card">("loan");
   const [promoType, setPromoType] = useState<"none" | "zero" | "deferred">("none");
   const [promoEndDate, setPromoEndDate] = useState("");
+  const [cardMinimumMode, setCardMinimumMode] = useState<"percent" | "fixed">("percent");
+  const [cardMinimumPercent, setCardMinimumPercent] = useState("2");
+  const [cardMinimumFloor, setCardMinimumFloor] = useState("25");
+  const [cardStatementDate, setCardStatementDate] = useState("");
+  const [creditCardTransactions, setCreditCardTransactions] = useState<PaymentEvent[]>([]);
   const [startingPrincipal, setStartingPrincipal] = useState("");
   const [startingPrincipalDate, setStartingPrincipalDate] = useState("");
   const [firstPaymentDate, setFirstPaymentDate] = useState("");
@@ -1356,7 +1392,13 @@ export default function LoanInterestSimulatorMockup() {
   const deferredAprPercent = useDeferredValue(aprPercent);
   const deferredDueDay = useDeferredValue(dueDay);
   const deferredTargetDate = useDeferredValue(targetDate);
-  const totalMonthlyPayment = (parseCurrency(deferredMinimumPayment) + parseCurrency(deferredAdditionalMonthlyPayment)).toFixed(2);
+  const cardMinimumPayment = accountType === "credit-card"
+    ? (cardMinimumMode === "percent"
+      ? Math.max(parseCurrency(cardMinimumFloor), parseCurrency(deferredStartingPrincipal) * (Number(cardMinimumPercent) || 0) / 100)
+      : parseCurrency(deferredMinimumPayment))
+    : parseCurrency(deferredMinimumPayment);
+  const effectiveMinimumPayment = accountType === "credit-card" ? cardMinimumPayment.toFixed(2) : deferredMinimumPayment;
+  const totalMonthlyPayment = (parseCurrency(effectiveMinimumPayment) + parseCurrency(deferredAdditionalMonthlyPayment)).toFixed(2);
   const todayDate = startOfDay(new Date());
   const todayValue = toDateInputValue(todayDate);
   const getSavedLoansStorageKey = (userId: string) => `${SAVED_LOANS_STORAGE_KEY}:${userId}`;
@@ -1379,6 +1421,11 @@ export default function LoanInterestSimulatorMockup() {
 
   const createBlankLoanSnapshot = (): LoanSnapshot => ({
     accountType: "loan",
+    cardMinimumMode: "percent",
+    cardMinimumPercent: "2",
+    cardMinimumFloor: "25",
+    cardStatementDate: "",
+    creditCardTransactions: [],
     activeView: "assumed",
     additionalMonthlyPayment: "0",
     aprPercent: "",
@@ -1492,6 +1539,11 @@ export default function LoanInterestSimulatorMockup() {
     setAccountType(snapshot.accountType ?? "loan");
     setPromoType(snapshot.promoType ?? "none");
     setPromoEndDate(snapshot.promoEndDate ?? "");
+    setCardMinimumMode(snapshot.cardMinimumMode ?? "percent");
+    setCardMinimumPercent(snapshot.cardMinimumPercent ?? "2");
+    setCardMinimumFloor(snapshot.cardMinimumFloor ?? "25");
+    setCardStatementDate(snapshot.cardStatementDate ?? "");
+    setCreditCardTransactions((snapshot.creditCardTransactions ?? []).map(deserializePaymentEvent));
     setLoanName(snapshot.loanName);
     setStartingPrincipal(snapshot.startingPrincipal);
     setStartingPrincipalDate(snapshot.startingPrincipalDate);
@@ -1555,6 +1607,10 @@ export default function LoanInterestSimulatorMockup() {
 
   const buildLoanSnapshot = (): LoanSnapshot => ({
     accountType,
+    cardMinimumMode,
+    cardMinimumPercent,
+    cardMinimumFloor,
+    cardStatementDate,
     activeView,
     additionalMonthlyPayment,
     aprPercent,
@@ -1589,6 +1645,7 @@ export default function LoanInterestSimulatorMockup() {
     newWhatIfDate,
     newWhatIfLabel,
     oneOffPayments: oneOffPayments.map(serializePaymentEvent),
+    creditCardTransactions: creditCardTransactions.map(serializePaymentEvent),
     promoType,
     promoEndDate,
     paymentDateOverrides,
@@ -2218,7 +2275,7 @@ export default function LoanInterestSimulatorMockup() {
         startingPrincipalDate: parseDate(deferredStartingPrincipalDate) ?? new Date(),
         aprPercent: Number(deferredAprPercent) || 0,
         dayCountBasis,
-        minimumPayment: parseCurrency(deferredMinimumPayment),
+        minimumPayment: parseCurrency(effectiveMinimumPayment),
         firstPaymentDate: parseDate(deferredFirstPaymentDate) ?? new Date(),
         dueDay: Number(deferredDueDay) || 0,
         moveWeekend,
@@ -2231,7 +2288,7 @@ export default function LoanInterestSimulatorMockup() {
       dayCountBasis,
       deferredDueDay,
       deferredFirstPaymentDate,
-      deferredMinimumPayment,
+      effectiveMinimumPayment,
       moveWeekend,
       roundDailyInterest,
       deferredStartingPrincipal,
@@ -2313,7 +2370,7 @@ export default function LoanInterestSimulatorMockup() {
         startingPrincipalDate: parseDate(deferredStartingPrincipalDate) ?? new Date(),
         aprPercent: Number(deferredAprPercent) || 0,
         dayCountBasis,
-        minimumPayment: parseCurrency(deferredMinimumPayment),
+        minimumPayment: parseCurrency(effectiveMinimumPayment),
         firstPaymentDate: parseDate(deferredFirstPaymentDate) ?? new Date(),
         dueDay: Number(deferredDueDay) || 0,
         moveWeekend,
@@ -2327,7 +2384,7 @@ export default function LoanInterestSimulatorMockup() {
       deferredDueDay,
       deferredFirstPaymentDate,
       fullLoanTargetDate,
-      deferredMinimumPayment,
+      effectiveMinimumPayment,
       moveWeekend,
       roundDailyInterest,
       deferredStartingPrincipal,
@@ -2574,7 +2631,7 @@ export default function LoanInterestSimulatorMockup() {
   );
 
   const whatIfRecurringAdjustments = useMemo(() => {
-    const baseMinimum = parseCurrency(deferredMinimumPayment);
+    const baseMinimum = parseCurrency(effectiveMinimumPayment);
     const baseExtra = parseCurrency(deferredAdditionalMonthlyPayment);
     let currentMinimum = baseMinimum;
     let currentExtra = baseExtra;
@@ -2596,7 +2653,7 @@ export default function LoanInterestSimulatorMockup() {
           startDate: change.effectiveDate,
         };
       });
-  }, [deferredAdditionalMonthlyPayment, deferredMinimumPayment, whatIfRecurringChanges]);
+  }, [deferredAdditionalMonthlyPayment, effectiveMinimumPayment, whatIfRecurringChanges]);
 
   const whatIfDueDayAdjustments = useMemo(
     () =>
@@ -2675,7 +2732,7 @@ export default function LoanInterestSimulatorMockup() {
     whatIfTargetDate,
   ]);
 
-  const loanInputsReady = parseCurrency(deferredStartingPrincipal) > 0 && parseCurrency(deferredMinimumPayment) > 0 && Boolean(parseDate(deferredStartingPrincipalDate)) && Boolean(parseDate(deferredFirstPaymentDate));
+  const loanInputsReady = parseCurrency(deferredStartingPrincipal) > 0 && parseCurrency(effectiveMinimumPayment) > 0 && Boolean(parseDate(deferredStartingPrincipalDate)) && Boolean(parseDate(deferredFirstPaymentDate));
   const historyErrors = loanInputsReady ? [...historyResult.errors] : [];
 
   const assumedInterestSaved =
@@ -3626,7 +3683,7 @@ export default function LoanInterestSimulatorMockup() {
           >
             <h2 style={{ margin: 0, fontSize: 22, gridColumn: activeLoanTab === "details" ? "1 / -1" : undefined }}>
               {activeLoanTab === "details"
-                ? "Loan Details"
+                ? accountType === "credit-card" ? "Credit Card Details" : "Loan Details"
                 : activeLoanTab === "history"
                    ? "Payoff Schedule"
                   : "What If"}
@@ -3639,17 +3696,22 @@ export default function LoanInterestSimulatorMockup() {
                   <Field label={accountType === "credit-card" ? "Standard APR (%)" : "APR (%)"} id="apr" value={aprPercent} onChange={setAprPercent} />
                   {accountType === "credit-card" ? <div style={{ gridColumn: "1 / -1", display: "grid", gap: 12, padding: 14, borderRadius: 14, background: currentTheme.surfaceMuted, border: `1px solid ${currentTheme.cardBorder}` }}><strong>Credit card promotion</strong><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}><label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Promotion type</span><select value={promoType} onChange={(event) => setPromoType(event.target.value as "none" | "zero" | "deferred")} style={{ boxSizing: "border-box", width: "100%", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }}><option value="none">No promotion</option><option value="zero">0% APR until a date</option><option value="deferred">Deferred interest until a date</option></select></label>{promoType !== "none" ? <DateField label="Promotion end date" id="promo-end-date" value={promoEndDate} onChange={setPromoEndDate} /> : null}</div>{promoType === "zero" ? <span style={{ fontSize: 12, color: currentTheme.textMuted }}>No interest accrues during the promotional period; the standard APR applies after the end date.</span> : promoType === "deferred" ? <span style={{ fontSize: 12, color: currentTheme.textMuted }}>Deferred interest may be charged retroactively if the promotional balance is not paid by the end date.</span> : null}</div> : null}
                 </FormSection>
-                <FormSection title="Timeline">
+                {accountType === "loan" ? <FormSection title="Timeline">
                   <DateField label="Starting principal date" id="starting-date" value={startingPrincipalDate} onChange={setStartingPrincipalDate} />
                   <DateField label="First scheduled payment date" id="first-payment-date" value={firstPaymentDate} minDate={startingPrincipalDate} onChange={setFirstPaymentDate} />
                   <DateField label="Calculate current balance through" id="target-date" value={targetDate} minDate={targetDateMinValue} onChange={setTargetDate} />
-                </FormSection>
+                </FormSection> : <FormSection title="Card account cycle" helper="Credit cards use a statement cycle and due date rather than an amortization timeline.">
+                  <DateField label="Statement date" id="card-statement-date" value={cardStatementDate} onChange={setCardStatementDate} />
+                  <Field label="Payment due day of month" id="card-due-day" value={dueDay} onChange={setDueDay} />
+                </FormSection>}
                 <FormSection title="Recurring payment rules">
-                  <CurrencyField label="Minimum payment" id="minimum-payment" value={minimumPayment} onChange={setMinimumPayment} />
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                  {accountType === "credit-card" ? <><label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Minimum payment rule</span><select value={cardMinimumMode} onChange={(event) => setCardMinimumMode(event.target.value as "percent" | "fixed")} style={{ boxSizing: "border-box", width: "100%", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }}><option value="percent">Percentage of balance</option><option value="fixed">Fixed minimum</option></select></label>{cardMinimumMode === "percent" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}><Field label="Percent of balance" id="card-minimum-percent" value={cardMinimumPercent} onChange={setCardMinimumPercent} /><CurrencyField label="Minimum floor" id="card-minimum-floor" value={cardMinimumFloor} onChange={setCardMinimumFloor} /></div> : <CurrencyField label="Fixed minimum payment" id="minimum-payment" value={minimumPayment} onChange={setMinimumPayment} />}</> : <CurrencyField label="Minimum payment" id="minimum-payment" value={minimumPayment} onChange={setMinimumPayment} />}
                   <CurrencyField label="Monthly extra payment" id="additional-monthly-payment" value={additionalMonthlyPayment} onChange={setAdditionalMonthlyPayment} />
-                  <Field label="Recurring due day" id="due-day" value={dueDay} onChange={setDueDay} />
+                  {accountType === "loan" ? <Field label="Recurring due day" id="due-day" value={dueDay} onChange={setDueDay} /> : <div style={{ fontSize: 12, color: currentTheme.textMuted }}>The projected minimum is recalculated from the balance each month.</div>}
+                  </div>
                 </FormSection>
-                <FormSection title="Accrual / calendar behavior" helper="These rules control how scheduled dates and daily interest are calculated.">
+                {accountType === "loan" ? <FormSection title="Accrual / calendar behavior" helper="These rules control how scheduled dates and daily interest are calculated.">
                   <label style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14, color: currentTheme.text }}>
                     <input type="checkbox" checked={moveWeekend} onChange={(event) => setMoveWeekend(event.target.checked)} />
                     Move scheduled due dates that fall on weekends to next weekday
@@ -3674,10 +3736,9 @@ export default function LoanInterestSimulatorMockup() {
                       Your July 3, 2024 first-payment example strongly suggests your lender may be using 366 for 2024.
                     </span>
                   </div>
-                </FormSection>
-                <div style={{ gridColumn: "1 / -1" }}><FormSection title="Actions">
-                  <button type="button" onClick={saveCurrentLoan} style={{ border: `1px solid ${currentTheme.accent}`, background: currentTheme.accent, color: "#fff", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{currentLoanId ? "Save changes" : "Create loan"}</button>
-                </FormSection></div>
+                </FormSection> : null}
+                {accountType === "credit-card" ? <CreditCardActivityEditor theme={currentTheme} transactions={creditCardTransactions} onChange={setCreditCardTransactions} /> : null}
+                <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={saveCurrentLoan} style={{ border: `1px solid ${currentTheme.accent}`, background: currentTheme.accent, color: "#fff", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{currentLoanId ? "Save changes" : accountType === "credit-card" ? "Create credit card" : "Create loan"}</button></div>
               </>
             ) : activeLoanTab === "history" ? (
               <>
@@ -5377,6 +5438,7 @@ export default function LoanInterestSimulatorMockup() {
     </div>
   );
 }
+
 
 
 
