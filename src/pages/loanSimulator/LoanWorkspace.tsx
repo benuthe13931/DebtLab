@@ -1,10 +1,11 @@
 // @ts-nocheck
+import type { LoanSimulatorRuntime } from "../../types/loanSimulatorRuntime";
 import { LoanDetailsTab } from "./LoanDetailsTab";
 import { LoanTransactionsTab } from "./LoanTransactionsTab";
 import { LoanHistoryTab } from "./LoanHistoryTab";
 import { LoanWhatIfTab } from "./LoanWhatIfTab";
 import { LoanSummarySection } from "./LoanSummarySection";
-export function LoanWorkspace({ runtime }: { runtime: Record<string, any> }) {
+export function LoanWorkspace({ runtime }: { runtime: LoanSimulatorRuntime }) {
   const { activeLoanTab, accountType, currentTheme, setActiveLoanTab, setActiveView } = runtime;
   return (
             <main style={{ display: "grid", gap: 0, minWidth: 0 }}>
@@ -49,3 +50,7 @@ export function LoanWorkspace({ runtime }: { runtime: Record<string, any> }) {
         </main>
   );
 }
+
+
+
+
