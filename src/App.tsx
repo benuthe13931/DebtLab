@@ -208,6 +208,8 @@ type LoanSnapshot = {
   newWhatIfDate: string;
   newWhatIfLabel: string;
   oneOffPayments: SerializedPaymentEvent[];
+  overviewBalance?: number;
+  overviewOriginalBalance?: number;
   paymentDateOverrides: Record<string, string>;
   paymentLabelOverrides: Record<string, string>;
   roundDailyInterest: boolean;
@@ -1756,6 +1758,81 @@ function FormSection({
   );
 }
 
+type PortfolioStrategy = "avalanche" | "snowball" | "minimum";
+
+function estimateSavedLoanBalance(data: LoanSnapshot) {
+  let balance = parseCurrency(data.startingPrincipal);
+  const start = parseDate(data.startingPrincipalDate);
+  const target = parseDate(data.targetDate);
+  if (!start || !target || target <= start) return balance;
+  const payment = parseCurrency(data.minimumPayment) + parseCurrency(data.additionalMonthlyPayment);
+  const months = Math.max(0, (target.getFullYear() - start.getFullYear()) * 12 + target.getMonth() - start.getMonth());
+  for (let month = 0; month < months && balance > 0; month += 1) balance = Math.max(0, balance + balance * (Number(data.aprPercent) || 0) / 100 / 12 - payment);
+  const oneOffPaid = data.oneOffPayments.reduce((sum, item) => sum + (parseDate(item.date) && parseDate(item.date)! <= target ? item.amount : 0), 0);
+  return Math.max(0, balance - oneOffPaid);
+}
+
+function simulatePortfolio(loans: Array<{ apr: number; balance: number; id: string; minimum: number; name: string }>, strategy: PortfolioStrategy, extra: number) {
+  const balances = new Map(loans.map((loan) => [loan.id, loan.balance]));
+  const startingTotal = loans.reduce((sum, loan) => sum + loan.balance, 0);
+  const fixedBudget = loans.reduce((sum, loan) => sum + loan.minimum, 0) + (strategy === "minimum" ? 0 : extra);
+  const snapshots: Array<{ date: Date; balances: Record<string, number> }> = [];
+  let totalInterest = 0;
+  let month = 0;
+  while ([...balances.values()].some((balance) => balance > 0.005) && month < 1200) {
+    month += 1;
+    for (const loan of loans) {
+      const balance = balances.get(loan.id) ?? 0;
+      if (balance <= 0) continue;
+      const interest = balance * loan.apr / 100 / 12;
+      balances.set(loan.id, balance + interest);
+      totalInterest += interest;
+    }
+    let spent = 0;
+    for (const loan of loans) {
+      const balance = balances.get(loan.id) ?? 0;
+      const payment = Math.min(balance, loan.minimum);
+      balances.set(loan.id, balance - payment);
+      spent += payment;
+    }
+    if (strategy !== "minimum") {
+      let remaining = Math.max(0, fixedBudget - spent);
+      const ordered = [...loans].sort((a, b) => strategy === "avalanche" ? b.apr - a.apr || a.balance - b.balance : (balances.get(a.id) ?? 0) - (balances.get(b.id) ?? 0) || b.apr - a.apr);
+      for (const loan of ordered) {
+        const balance = balances.get(loan.id) ?? 0;
+        const payment = Math.min(balance, remaining);
+        balances.set(loan.id, balance - payment);
+        remaining -= payment;
+        if (remaining <= 0.005) break;
+      }
+    }
+    if (month <= 12) snapshots.push({ date: new Date(new Date().getFullYear(), new Date().getMonth() + month, 1), balances: Object.fromEntries(balances) });
+  }
+  const payoffDate = month >= 1200 ? null : new Date(new Date().getFullYear(), new Date().getMonth() + month, 1);
+  return { payoffDate, months: month, snapshots, startingTotal, totalInterest };
+}
+
+function DebtOverview({ loans, theme }: { loans: SavedLoanRecord[]; theme: ThemeDefinition }) {
+  const [extraPayment, setExtraPayment] = useState("0.00");
+  const [strategy, setStrategy] = useState<PortfolioStrategy>("avalanche");
+  const portfolioLoans = loans.map((loan) => ({ id: loan.id, name: loan.name, balance: estimateSavedLoanBalance(loan.data), apr: Number(loan.data.aprPercent) || 0, minimum: parseCurrency(loan.data.minimumPayment) + parseCurrency(loan.data.additionalMonthlyPayment) })).filter((loan) => loan.balance > 0);
+  const extra = parseCurrency(extraPayment);
+  const results = {
+    avalanche: simulatePortfolio(portfolioLoans, "avalanche", extra),
+    snowball: simulatePortfolio(portfolioLoans, "snowball", extra),
+    minimum: simulatePortfolio(portfolioLoans, "minimum", 0),
+  };
+  const selected = results[strategy];
+  const totalOriginal = loans.reduce((sum, loan) => sum + (loan.data.overviewOriginalBalance ?? parseCurrency(loan.data.startingPrincipal)), 0);
+  const progress = totalOriginal > 0 ? Math.max(0, Math.min(100, (1 - selected.startingTotal / totalOriginal) * 100)) : 0;
+  return <main style={{ display: "grid", gap: 20 }}>
+    <section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 22, boxShadow: theme.cardShadow, display: "grid", gap: 18 }}><div><h2 style={{ margin: 0 }}>Overall debt plan</h2><p style={{ margin: "6px 0 0", color: theme.textMuted }}>Compare payoff order across every saved loan. Add an extra monthly amount to see how each strategy changes interest and payoff timing.</p></div>{portfolioLoans.length === 0 ? <div style={{ padding: 18, border: `1px dashed ${theme.cardBorder}`, borderRadius: 12, color: theme.textMuted }}>Save at least one loan to build an overall payoff plan.</div> : <><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}><SummaryValue label="Remaining debt" value={formatCurrency(selected.startingTotal)} emphasized /><SummaryValue label="Estimated payoff" value={formatMonthYear(selected.payoffDate)} emphasized /><SummaryValue label="Payoff progress" value={formatPercent(progress)} emphasized /></div><div style={{ height: 9, borderRadius: 999, overflow: "hidden", background: theme.surfaceMuted }}><div style={{ width: `${progress}%`, height: "100%", background: theme.accent }} /></div></>}</section>
+    {portfolioLoans.length > 0 ? <><section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 20, boxShadow: theme.cardShadow, display: "grid", gap: 16 }}><div style={{ maxWidth: 280 }}><CurrencyField id="portfolio-extra" label="Extra available for debt each month" value={extraPayment} onChange={setExtraPayment} /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>{(["avalanche", "snowball", "minimum"] as const).map((method) => <button key={method} type="button" onClick={() => setStrategy(method)} style={{ border: `1px solid ${strategy === method ? theme.accent : theme.cardBorder}`, borderRadius: 14, padding: 14, background: strategy === method ? theme.accentSoft : theme.surface, color: theme.text, textAlign: "left", cursor: "pointer", display: "grid", gap: 6 }}><strong>{method === "avalanche" ? "Debt avalanche" : method === "snowball" ? "Debt snowball" : "Minimum payments"}</strong><span style={{ fontSize: 12, color: theme.textMuted }}>{method === "avalanche" ? "Highest APR first" : method === "snowball" ? "Smallest balance first" : "No targeted extra payment"}</span><span style={{ fontSize: 13 }}>{formatCurrency(results[method].totalInterest)} interest · {results[method].months} months</span></button>)}</div></section>
+    <section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 20, boxShadow: theme.cardShadow, overflow: "hidden" }}><h3 style={{ margin: "0 0 14px" }}>Loans</h3><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Loan", "Balance", "APR", "Monthly payment", "Priority"].map((heading) => <th key={heading} style={{ padding: 9, textAlign: "left", borderBottom: `1px solid ${theme.cardBorder}`, color: theme.textMuted, fontSize: 12 }}>{heading}</th>)}</tr></thead><tbody>{[...portfolioLoans].sort((a, b) => strategy === "avalanche" ? b.apr - a.apr : strategy === "snowball" ? a.balance - b.balance : 0).map((loan, index) => <tr key={loan.id}><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}`, fontWeight: 650 }}>{loan.name}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{formatCurrency(loan.balance)}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{formatPercent(loan.apr)}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{formatCurrency(loan.minimum)}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{strategy === "minimum" ? "—" : index + 1}</td></tr>)}</tbody></table></section>
+    <section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 20, boxShadow: theme.cardShadow, overflowX: "auto" }}><h3 style={{ margin: "0 0 14px" }}>Next 12 months</h3><table style={{ borderCollapse: "collapse", minWidth: 980, width: "100%" }}><thead><tr><th style={{ position: "sticky", left: 0, background: theme.surface, padding: 8, textAlign: "left" }}>Loan</th>{selected.snapshots.map((snapshot) => <th key={snapshot.date.toISOString()} style={{ padding: 8, fontSize: 11, color: theme.textMuted }}>{snapshot.date.toLocaleString("en-US", { month: "short", year: "2-digit" })}</th>)}</tr></thead><tbody>{portfolioLoans.map((loan) => <tr key={loan.id}><td style={{ position: "sticky", left: 0, background: theme.surface, padding: 8, fontWeight: 650 }}>{loan.name}</td>{selected.snapshots.map((snapshot) => <td key={snapshot.date.toISOString()} style={{ padding: 8, fontSize: 12, borderTop: `1px solid ${theme.cardBorder}` }}>{formatCurrency(snapshot.balances[loan.id] ?? 0)}</td>)}</tr>)}</tbody></table></section></> : null}
+  </main>;
+}
+
 function LoanSidebar({
   collapsed,
   currentLoanId,
@@ -1763,6 +1840,8 @@ function LoanSidebar({
   loans,
   onAdd,
   onCollapse,
+  onDelete,
+  onOverview,
   onSelect,
   saveStatus,
 }: {
@@ -1772,6 +1851,8 @@ function LoanSidebar({
   loans: SavedLoanRecord[];
   onAdd: () => void;
   onCollapse: () => void;
+  onDelete: (loanId: string) => void;
+  onOverview: () => void;
   onSelect: (loanId: string) => void;
   saveStatus: string;
 }) {
@@ -1785,10 +1866,11 @@ function LoanSidebar({
         <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>Add loan
       </button> : null}
       {!collapsed ? <div style={{ display: "grid", gap: 7, alignContent: "start" }}>
+        <button type="button" onClick={onOverview} style={{ width: "100%", textAlign: "left", border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 10, padding: "10px 12px", background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", fontWeight: 750, cursor: "pointer" }}>Overall summary</button>
         {!currentLoanId && loanName ? <div style={{ padding: collapsed ? "10px 0" : "10px 12px", textAlign: collapsed ? "center" : "left", borderRadius: 10, background: "var(--app-accent-soft, #dbeafe)", color: "var(--app-text, #0f172a)", fontSize: 13, fontWeight: 700 }} title="Unsaved loan">{collapsed ? "*" : `${loanName || "New loan"} (draft)`}</div> : null}
         {loans.map((loan) => {
           const selected = loan.id === currentLoanId;
-          return <button key={loan.id} type="button" title={loan.name} onClick={() => onSelect(loan.id)} style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: collapsed ? "center" : "left", border: selected ? "1px solid var(--app-accent, #2563eb)" : "1px solid transparent", borderRadius: 10, padding: collapsed ? "10px 0" : "10px 12px", background: selected ? "var(--app-accent-soft, #dbeafe)" : "transparent", color: "var(--app-text, #0f172a)", fontWeight: selected ? 750 : 600, cursor: "pointer" }}>{collapsed ? loan.name.charAt(0).toUpperCase() : loan.name}</button>;
+          return <div key={loan.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 5, alignItems: "center", border: selected ? "1px solid var(--app-accent, #2563eb)" : "1px solid transparent", borderRadius: 10, background: selected ? "var(--app-accent-soft, #dbeafe)" : "transparent" }}><button type="button" title={loan.name} onClick={() => onSelect(loan.id)} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left", border: 0, padding: "10px 8px 10px 12px", background: "transparent", color: "var(--app-text, #0f172a)", fontWeight: selected ? 750 : 600, cursor: "pointer" }}>{loan.name}</button><button type="button" aria-label={`Delete ${loan.name}`} title="Delete loan" onClick={() => onDelete(loan.id)} style={{ width: 30, height: 30, display: "grid", placeItems: "center", border: 0, borderRadius: 7, background: "transparent", color: "var(--app-danger-text, #b91c1c)", cursor: "pointer" }}><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg></button></div>;
         })}
         {loans.length === 0 && !collapsed ? <div style={{ padding: "12px 4px", color: "var(--app-text-muted, #64748b)", fontSize: 12, lineHeight: 1.5 }}>Add your first loan to begin building a payoff plan.</div> : null}
       </div> : null}
@@ -1868,76 +1950,6 @@ function getTableRowStyle(row: ScheduleRow) {
   return undefined;
 }
 
-function TypeHeader() {
-  const [isOpen, setIsOpen] = useState(false);
-  const wrapperRef = useRef<HTMLSpanElement | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
-
-  return (
-    <span ref={wrapperRef} style={{ display: "inline-flex", alignItems: "center", gap: 6, position: "relative" }}>
-      <span>Type</span>
-      <button
-        type="button"
-        onClick={() => setIsOpen((current) => !current)}
-        aria-label="Show type key"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 14,
-          height: 14,
-          borderRadius: "50%",
-          background: "var(--app-accent, #2563eb)",
-          color: "#ffffff",
-          fontSize: 9,
-          fontWeight: 700,
-          cursor: "pointer",
-          border: "none",
-          padding: 0,
-        }}
-      >
-        ?
-      </button>
-      {isOpen ? (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            left: 0,
-            zIndex: 10,
-            minWidth: 220,
-            border: "1px solid var(--app-border-strong, #cbd5e1)",
-            borderRadius: 10,
-            background: "var(--app-surface, #ffffff)",
-            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.14)",
-            padding: 10,
-            display: "grid",
-            gap: 4,
-            fontSize: 12,
-            color: "var(--app-text, #334155)",
-          }}
-        >
-          <div>S = Scheduled</div>
-          <div>E = Extra payment</div>
-          <div>H = Historical</div>
-          <div>P = Paused</div>
-          <div>A = As-of snapshot</div>
-        </div>
-      ) : null}
-    </span>
-  );
-}
-
 export default function LoanInterestSimulatorMockup() {
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -1946,7 +1958,7 @@ export default function LoanInterestSimulatorMockup() {
   const [authDisplayName, setAuthDisplayName] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
-  const [activePage, setActivePage] = useState<"simulator" | "paycheck" | "profile">("simulator");
+  const [activePage, setActivePage] = useState<"overview" | "simulator" | "paycheck" | "profile">("simulator");
   const [activeLoanTab, setActiveLoanTab] = useState<"details" | "history" | "whatif">("details");
   const [loanSidebarCollapsed, setLoanSidebarCollapsed] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -2280,10 +2292,6 @@ export default function LoanInterestSimulatorMockup() {
     whatIfPayments: whatIfPayments.map(serializePaymentEvent),
     whatIfRecurringChanges: whatIfRecurringChanges.map(serializeRecurringChange),
   });
-
-  const resetAll = () => {
-    applyLoanSnapshot(createBlankLoanSnapshot());
-  };
 
   const loadLoansForUser = async (userId: string) => {
     if (cloudStorageEnabled) {
@@ -2704,6 +2712,8 @@ export default function LoanInterestSimulatorMockup() {
       data: {
         ...snapshot,
         loanName: trimmedName,
+        overviewBalance: parseCurrency(startingPrincipal),
+        overviewOriginalBalance: parseCurrency(startingPrincipal),
       },
       id: loanId,
       name: trimmedName,
@@ -2737,17 +2747,17 @@ export default function LoanInterestSimulatorMockup() {
     setActiveView("assumed");
   };
 
-  const deleteCurrentLoan = () => {
-    if (!currentLoanId) return;
-    const selectedLoan = savedLoans.find((loan) => loan.id === currentLoanId);
+  const deleteLoan = (loanId: string) => {
+    const selectedLoan = savedLoans.find((loan) => loan.id === loanId);
     if (!selectedLoan) return;
     const confirmed = window.confirm(`Delete saved loan "${selectedLoan.name}"?`);
     if (!confirmed) return;
 
-    const nextLoans = savedLoans.filter((loan) => loan.id !== currentLoanId);
+    const nextLoans = savedLoans.filter((loan) => loan.id !== loanId);
     persistSavedLoans(nextLoans);
     setSaveStatus(`Deleted ${selectedLoan.name}`);
 
+    if (loanId !== currentLoanId) return;
     if (nextLoans.length > 0) {
       setCurrentLoanId(nextLoans[0].id);
       applyLoanSnapshot(nextLoans[0].data);
@@ -3432,9 +3442,8 @@ export default function LoanInterestSimulatorMockup() {
     whatIfTargetDate,
   ]);
 
-  const historyErrors = [
-    ...historyResult.errors,
-  ];
+  const loanInputsReady = parseCurrency(deferredStartingPrincipal) > 0 && parseCurrency(deferredMinimumPayment) > 0 && Boolean(parseDate(deferredStartingPrincipalDate)) && Boolean(parseDate(deferredFirstPaymentDate));
+  const historyErrors = loanInputsReady ? [...historyResult.errors] : [];
 
   const assumedInterestSaved =
     minimumOnlyFullProjection.totalInterestPaid - assumedFullProjection.totalInterestPaid;
@@ -3975,6 +3984,11 @@ export default function LoanInterestSimulatorMockup() {
     setWhatIfActionError("");
   };
 
+  const headerLoans = savedLoans.map((loan) => ({ id: loan.id, name: loan.name, balance: estimateSavedLoanBalance(loan.data), apr: Number(loan.data.aprPercent) || 0, minimum: parseCurrency(loan.data.minimumPayment) + parseCurrency(loan.data.additionalMonthlyPayment) })).filter((loan) => loan.balance > 0);
+  const headerProjection = simulatePortfolio(headerLoans, "avalanche", 0);
+  const headerOriginalDebt = savedLoans.reduce((sum, loan) => sum + (loan.data.overviewOriginalBalance ?? parseCurrency(loan.data.startingPrincipal)), 0);
+  const headerProgress = headerOriginalDebt > 0 ? Math.max(0, Math.min(100, (1 - headerProjection.startingTotal / headerOriginalDebt) * 100)) : 0;
+
   if (!currentUserId) {
     return loginScreen;
   }
@@ -4031,6 +4045,8 @@ export default function LoanInterestSimulatorMockup() {
           loans={savedLoans}
           onAdd={() => { startNewLoan(); setActivePage("simulator"); }}
           onCollapse={() => setLoanSidebarCollapsed((collapsed) => !collapsed)}
+          onDelete={deleteLoan}
+          onOverview={() => setActivePage("overview")}
           onSelect={(loanId) => { loadSavedLoan(loanId); setActivePage("simulator"); }}
           saveStatus={saveStatus}
         />
@@ -4041,10 +4057,11 @@ export default function LoanInterestSimulatorMockup() {
             <span>
               <span style={{ display: "block", fontSize: 34, fontWeight: 750, lineHeight: 1.1 }}>DebtLab</span>
               <span style={{ display: "block", marginTop: 6, color: currentTheme.textMuted, fontSize: 15 }}>
-                {activePage === "paycheck" ? "Estimate take-home pay and future changes." : activePage === "profile" ? "Manage your account and preferences." : "Model loan payments and plan your payoff."}
+                {activePage === "paycheck" ? "Estimate take-home pay and future changes." : activePage === "profile" ? "Manage your account and preferences." : activePage === "overview" ? "Compare payoff strategies across all saved loans." : "Model loan payments and plan your payoff."}
               </span>
             </span>
           </button>
+          {headerLoans.length > 0 ? <button type="button" onClick={() => setActivePage("overview")} style={{ marginLeft: "auto", minWidth: 320, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 16px", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 14, padding: "10px 14px", background: currentTheme.surface, color: currentTheme.text, textAlign: "left", cursor: "pointer", boxShadow: currentTheme.cardShadow }}><span style={{ fontSize: 11, color: currentTheme.textMuted }}>Remaining debt</span><span style={{ fontSize: 11, color: currentTheme.textMuted }}>Estimated payoff</span><strong>{formatCurrency(headerProjection.startingTotal)}</strong><strong>{formatMonthYear(headerProjection.payoffDate)}</strong><span style={{ gridColumn: "1 / 3", height: 5, borderRadius: 999, overflow: "hidden", background: currentTheme.surfaceMuted }}><span style={{ display: "block", width: `${headerProgress}%`, height: "100%", background: currentTheme.accent }} /></span></button> : null}
           <div ref={profileMenuRef} style={{ position: "relative" }}>
             <button type="button" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)} style={{ display: "flex", gap: 10, alignItems: "center", border: `1px solid ${currentTheme.cardBorder}`, background: currentTheme.surface, color: currentTheme.text, borderRadius: 999, padding: "7px 12px 7px 7px", fontWeight: 700, cursor: "pointer", boxShadow: currentTheme.cardShadow }}>
               <span aria-hidden="true" style={{ width: 34, height: 34, display: "grid", placeItems: "center", borderRadius: "50%", background: currentTheme.accent, color: "#fff", fontSize: 14 }}>{profileInitial}</span>
@@ -4064,7 +4081,9 @@ export default function LoanInterestSimulatorMockup() {
             ) : null}
           </div>
         </header>
-        {activePage === "profile" ? (
+        {activePage === "overview" ? (
+          <DebtOverview loans={savedLoans} theme={currentTheme} />
+        ) : activePage === "profile" ? (
           <main
             style={{
               display: "grid",
@@ -4343,7 +4362,7 @@ export default function LoanInterestSimulatorMockup() {
                 <button key={tab} type="button" onClick={() => { setActiveLoanTab(tab); if (tab !== "details") setActiveView(tab); else setActiveView("assumed"); }} style={{ flex: "1 1 0", marginBottom: -1, border: `1px solid ${currentTheme.cardBorder}`, borderBottomColor: activeLoanTab === tab ? currentTheme.surface : currentTheme.cardBorder, borderRadius: "14px 14px 0 0", padding: "13px 16px", background: activeLoanTab === tab ? currentTheme.surface : currentTheme.surfaceMuted, color: currentTheme.text, fontWeight: 700, cursor: "pointer" }}>{label}</button>
               ))}
             </nav>
-            <div style={{ display: "grid", gap: 24, gridTemplateColumns: "360px minmax(0, 1fr)", alignItems: "start", minWidth: 0, paddingTop: 20 }}>
+            <div style={{ display: "grid", gap: 24, gridTemplateColumns: activeLoanTab === "details" ? "minmax(0, 1fr)" : "360px minmax(0, 1fr)", alignItems: "start", minWidth: 0, paddingTop: 20 }}>
           <section
             style={{
               background: currentTheme.surface,
@@ -4408,8 +4427,6 @@ export default function LoanInterestSimulatorMockup() {
                 </FormSection>
                 <FormSection title="Actions">
                   <button type="button" onClick={saveCurrentLoan} style={{ border: `1px solid ${currentTheme.accent}`, background: currentTheme.accent, color: "#fff", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{currentLoanId ? "Save changes" : "Create loan"}</button>
-                  <button type="button" onClick={resetAll} style={{ border: `1px solid ${currentTheme.cardBorder}`, background: currentTheme.surface, color: currentTheme.text, borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Reset all inputs</button>
-                  {currentLoanId ? <button type="button" onClick={deleteCurrentLoan} style={{ border: "1px solid #ef4444", background: currentTheme.surface, color: "#b91c1c", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Delete loan</button> : null}
                 </FormSection>
               </>
             ) : activeLoanTab === "history" ? (
@@ -4938,7 +4955,7 @@ export default function LoanInterestSimulatorMockup() {
             ) : null}
           </section>
 
-          <section style={{ display: "grid", gap: 24, textAlign: "left", width: "100%", minWidth: 0 }}>
+          <section style={{ display: activeLoanTab === "details" ? "none" : "grid", gap: 24, textAlign: "left", width: "100%", minWidth: 0 }}>
             <div
               style={{
                 background: currentTheme.surface,
@@ -5521,7 +5538,7 @@ export default function LoanInterestSimulatorMockup() {
                                   color: currentTheme.textMuted,
                                 }}
                               >
-                                {heading === "Type" ? <TypeHeader /> : heading}
+                                {heading}
                               </th>
                             ))}
                           </tr>
@@ -5671,7 +5688,7 @@ export default function LoanInterestSimulatorMockup() {
                                   color: currentTheme.textMuted,
                                 }}
                               >
-                                {heading === "Type" ? <TypeHeader /> : heading}
+                                {heading}
                               </th>
                             ))}
                           </tr>
@@ -5742,16 +5759,18 @@ export default function LoanInterestSimulatorMockup() {
                                 {row.eventType === "snapshot" || row.eventType === "paused" || showHelperAmortization ? (
                                   <span style={{ color: currentTheme.textMuted, fontSize: 12 }}>Auto</span>
                                 ) : editingPaymentId === row.rowId ? (
-                                  <div style={{ display: "grid", gap: 5 }}>
+                                  <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
                                     <button
                                       type="button"
+                                      aria-label="Edit payment"
+                                      title="Edit payment"
                                       onClick={saveEditedPayment}
                                       style={{
                                         border: `1px solid ${currentTheme.accent}`,
                                         background: currentTheme.accent,
                                         color: "#ffffff",
                                         borderRadius: 8,
-                                        padding: "6px 10px",
+                                        padding: 6,
                                         fontSize: 12,
                                         cursor: "pointer",
                                         whiteSpace: "nowrap",
@@ -5792,23 +5811,25 @@ export default function LoanInterestSimulatorMockup() {
                                         whiteSpace: "nowrap",
                                       }}
                                     >
-                                      Edit
+                                      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Zm10-12 3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                     </button>
                                     <button
                                       type="button"
+                                      aria-label="Delete payment"
+                                      title="Delete payment"
                                       onClick={() => deleteHelperRow(row.rowId)}
                                       style={{
                                         border: "1px solid #ef4444",
                                         background: "var(--app-danger-bg, #fff1f2)",
                                         color: "var(--app-danger-text, #b91c1c)",
                                         borderRadius: 8,
-                                        padding: "6px 10px",
+                                        padding: 6,
                                         fontSize: 12,
                                         cursor: "pointer",
                                         whiteSpace: "nowrap",
                                       }}
                                     >
-                                      Delete
+                                      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                     </button>
                                   </div>
                                 )}
@@ -5823,7 +5844,7 @@ export default function LoanInterestSimulatorMockup() {
               </>
             ) : (
               <>
-                {historyErrors.length > 0 || whatIfProjection.errors.length > 0 ? (
+                {loanInputsReady && (historyErrors.length > 0 || whatIfProjection.errors.length > 0) ? (
                   <div style={{ display: "grid", gap: 10 }}>
                     {[...historyErrors, ...whatIfProjection.errors].map((error, index) => (
                       <div
@@ -6044,7 +6065,7 @@ export default function LoanInterestSimulatorMockup() {
                                   color: currentTheme.textMuted,
                                 }}
                               >
-                                {heading === "Type" ? <TypeHeader /> : heading}
+                                {heading}
                               </th>
                             ))}
                           </tr>

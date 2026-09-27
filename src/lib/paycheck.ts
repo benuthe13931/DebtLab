@@ -178,6 +178,12 @@ export const PAY_PERIODS: Record<PayFrequency, number> = {
   monthly: 12,
 };
 
+export function estimateStateWithholding(state: string, taxablePay: number): number | null {
+  if (["AK", "FL", "NV", "NH", "SD", "TN", "TX", "WA", "WY"].includes(state)) return 0;
+  if (state === "PA") return roundCents(nonNegative(taxablePay) * 0.0307);
+  return null;
+}
+
 const roundCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 const nonNegative = (value: number) => Math.max(0, Number.isFinite(value) ? value : 0);
 

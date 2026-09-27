@@ -4,6 +4,7 @@ import { cloudStorageEnabled, loadCloudPaycheckPlan, saveCloudPaycheckPlan } fro
 import {
   estimateAnnualFederalTax,
   estimatePaycheck,
+  estimateStateWithholding,
   type FilingStatus,
   type PayFrequency,
   type PaycheckInputs,
@@ -16,14 +17,18 @@ export type PaycheckScenario = {
   hourlyRate: number;
   hoursPerWeek: number;
   id: string;
-  incomeType: "salary" | "hourly" | "variable-w2" | "contract";
+  imputedDentalPerPaycheck: number;
+  imputedMedicalPerPaycheck: number;
+  imputedOtherPerPaycheck: number;
+  imputedVisionPerPaycheck: number;
+  incomeType: "salary" | "hourly" | "contract" | "bonus" | "severance" | "one-time-w2" | "one-time-contract";
   inputs: PaycheckInputs;
   label: string;
   startDate: string;
   state: string;
 };
 
-type LegacyScenario = Partial<PaycheckScenario> & { effectiveDate?: string };
+type LegacyScenario = Omit<Partial<PaycheckScenario>, "incomeType"> & { effectiveDate?: string; incomeType?: PaycheckScenario["incomeType"] | "variable-w2" };
 
 type TaxSettings = {
   additionalIncome: number;
@@ -78,6 +83,10 @@ const makeScenario = (index = 0, source?: PaycheckScenario): PaycheckScenario =>
   hourlyRate: 0,
   hoursPerWeek: 40,
   id: crypto.randomUUID(),
+  imputedDentalPerPaycheck: 0,
+  imputedMedicalPerPaycheck: 0,
+  imputedOtherPerPaycheck: 0,
+  imputedVisionPerPaycheck: 0,
   incomeType: "salary",
   inputs: { ...(source?.inputs ?? defaultInputs) },
   label: `Salary ${index + 1}`,
@@ -96,7 +105,11 @@ const normalizeScenarios = (value: unknown): PaycheckScenario[] => {
       hourlyRate: saved.hourlyRate ?? 0,
       hoursPerWeek: saved.hoursPerWeek ?? 40,
       id: saved.id ?? crypto.randomUUID(),
-      incomeType: saved.incomeType ?? "salary",
+      imputedDentalPerPaycheck: saved.imputedDentalPerPaycheck ?? 0,
+      imputedMedicalPerPaycheck: saved.imputedMedicalPerPaycheck ?? 0,
+      imputedOtherPerPaycheck: saved.imputedOtherPerPaycheck ?? 0,
+      imputedVisionPerPaycheck: saved.imputedVisionPerPaycheck ?? 0,
+      incomeType: saved.incomeType === "variable-w2" ? "salary" : saved.incomeType ?? "salary",
       inputs: { ...defaultInputs, ...(saved.inputs ?? {}) },
       label: legacyLabel || !saved.label ? `Salary ${index + 1}` : saved.label,
       startDate: saved.startDate ?? saved.effectiveDate ?? "",
@@ -119,6 +132,7 @@ const cardStyle = {
 } as const;
 
 const controlStyle = {
+  boxSizing: "border-box",
   border: "1px solid var(--app-border-strong, #cbd5e1)",
   borderRadius: 10,
   padding: "10px 12px",
@@ -202,11 +216,18 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
     return saved && !Array.isArray(saved) && typeof saved === "object" && "taxSettings" in saved ? { ...defaultTaxSettings, ...(saved as { taxSettings: Partial<TaxSettings> }).taxSettings } : defaultTaxSettings;
   });
   const [activeId, setActiveId] = useState(() => scenarios[0].id);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [pageTab, setPageTab] = useState<"paychecks" | "tax">("paychecks");
   const [cloudLoaded, setCloudLoaded] = useState(!cloudStorageEnabled);
   const [saveStatus, setSaveStatus] = useState("");
   const activeScenario = scenarios.find((scenario) => scenario.id === activeId) ?? scenarios[0];
-  const resolvedInputs = (scenario: PaycheckScenario): PaycheckInputs => ({ ...scenario.inputs, annualSalary: scenario.incomeType === "hourly" ? scenario.hourlyRate * scenario.hoursPerWeek * 52 : scenario.inputs.annualSalary });
+  const isOneOff = (scenario: PaycheckScenario) => ["bonus", "severance", "one-time-w2", "one-time-contract"].includes(scenario.incomeType);
+  const resolvedInputs = (scenario: PaycheckScenario): PaycheckInputs => {
+    const annualSalary = scenario.incomeType === "hourly" ? scenario.hourlyRate * scenario.hoursPerWeek * 52 : scenario.inputs.annualSalary;
+    const withoutState = { ...scenario.inputs, annualSalary, stateWithholdingPerPaycheck: 0 };
+    const preliminary = estimatePaycheck(withoutState);
+    return { ...withoutState, stateWithholdingPerPaycheck: estimateStateWithholding(scenario.state, preliminary.grossPay + withoutState.imputedIncomePerPaycheck) ?? 0 };
+  };
   const activeResult = useMemo(() => estimatePaycheck(resolvedInputs(activeScenario)), [activeScenario]);
 
   useEffect(() => {
@@ -245,10 +266,18 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
   const updateInputs = <K extends keyof PaycheckInputs>(key: K, value: PaycheckInputs[K]) => {
     updateScenario({ inputs: { ...activeScenario.inputs, [key]: value } });
   };
-  const addScenario = () => {
+  const updateImputedIncome = (key: "imputedMedicalPerPaycheck" | "imputedDentalPerPaycheck" | "imputedVisionPerPaycheck" | "imputedOtherPerPaycheck", value: number) => {
+    const next = { ...activeScenario, [key]: value };
+    updateScenario({ [key]: value, inputs: { ...activeScenario.inputs, imputedIncomePerPaycheck: next.imputedMedicalPerPaycheck + next.imputedDentalPerPaycheck + next.imputedVisionPerPaycheck + next.imputedOtherPerPaycheck } });
+  };
+  const addScenario = (incomeType: PaycheckScenario["incomeType"], label: string) => {
     const next = makeScenario(scenarios.length, activeScenario);
+    next.incomeType = incomeType;
+    next.label = label;
+    next.startDate = ["bonus", "severance", "one-time-w2", "one-time-contract"].includes(incomeType) ? new Date().toISOString().slice(0, 10) : "";
     setScenarios((current) => [...current, next]);
     setActiveId(next.id);
+    setAddMenuOpen(false);
   };
   const deleteScenario = () => {
     if (scenarios.length === 1) return;
@@ -269,10 +298,12 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
     });
   };
   const periodLabel = (scenario: PaycheckScenario) => {
+    if (isOneOff(scenario)) return scenario.startDate || "Payment date not set";
     const start = scenario.startDate || "Start of year";
     const end = scenario.endDate || "Ongoing";
     return `${start} – ${end}`;
   };
+  const activeStateEstimate = estimateStateWithholding(activeScenario.state, isOneOff(activeScenario) ? activeScenario.inputs.annualSalary : activeResult.grossPay + activeScenario.inputs.imputedIncomePerPaycheck);
 
   const annualTotals = useMemo(() => {
     const yearStart = new Date(2026, 0, 1);
@@ -286,14 +317,18 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
       const end = scenario.endDate ? new Date(`${scenario.endDate}T00:00:00`) : yearEnd;
       const boundedStart = start < yearStart ? yearStart : start;
       const boundedEnd = end > yearEnd ? yearEnd : end;
-      const fraction = boundedEnd < boundedStart ? 0 : (Math.floor((boundedEnd.getTime() - boundedStart.getTime()) / 86_400_000) + 1) / 365;
+      const fraction = isOneOff(scenario) ? 1 : boundedEnd < boundedStart ? 0 : (Math.floor((boundedEnd.getTime() - boundedStart.getTime()) / 86_400_000) + 1) / 365;
       const inputs = resolvedInputs(scenario);
       const result = estimatePaycheck(inputs);
-      if (scenario.incomeType === "contract") selfEmploymentIncome += inputs.annualSalary * fraction;
+      if (scenario.incomeType === "contract" || scenario.incomeType === "one-time-contract") selfEmploymentIncome += inputs.annualSalary * fraction;
       else {
-        w2TaxableWages += result.taxableFederalWages * result.periodsPerYear * fraction;
-        w2SocialSecurityWages += Math.max(0, result.grossPay + inputs.imputedIncomePerPaycheck - result.benefitDeductions) * result.periodsPerYear * fraction;
-        federalWithholding += (scenario.federalWithholdingPerPaycheck || result.federalIncomeTax) * result.periodsPerYear * fraction;
+        const periodMultiplier = isOneOff(scenario) ? 1 : result.periodsPerYear * fraction;
+        const taxableWages = isOneOff(scenario) ? inputs.annualSalary + inputs.imputedIncomePerPaycheck : result.taxableFederalWages * periodMultiplier;
+        w2TaxableWages += taxableWages;
+        w2SocialSecurityWages += isOneOff(scenario) ? taxableWages : Math.max(0, result.grossPay + inputs.imputedIncomePerPaycheck - result.benefitDeductions) * periodMultiplier;
+        federalWithholding += scenario.federalWithholdingPerPaycheck
+          ? scenario.federalWithholdingPerPaycheck * (isOneOff(scenario) ? 1 : periodMultiplier)
+          : isOneOff(scenario) ? inputs.annualSalary * 0.22 : result.federalIncomeTax * periodMultiplier;
       }
     }
     const result = estimateAnnualFederalTax({ ...taxSettings, federalWithholding, filingStatus: scenarios[0]?.inputs.filingStatus ?? "single", selfEmploymentIncome, w2SocialSecurityWages, w2TaxableWages });
@@ -307,12 +342,12 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
           <div style={{ display: "grid", gap: 5, maxWidth: 780 }}>
             <h2 style={{ margin: 0, fontSize: 28 }}>Paycheck estimate</h2>
             <p style={{ margin: 0, color: "var(--app-text-muted, #64748b)", lineHeight: 1.55 }}>
-              Add salary periods to see how changes in pay, taxes, benefits, and retirement contributions affect take-home pay. A blank start date means the beginning of the year; a blank end date means the salary continues.
+              Build recurring pay estimates and dated one-time income for bonuses, severance, and contract work. The Annual Tax Estimate combines everything saved here.
             </p>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" onClick={() => void saveEstimate()} style={{ border: "1px solid var(--app-accent, #2563eb)", background: "var(--app-accent, #2563eb)", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>Save estimate</button>
-            <button type="button" onClick={addScenario} style={{ border: "1px solid var(--app-border, #e2e8f0)", background: "var(--app-surface, #fff)", color: "var(--app-text, #0f172a)", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>Add income period</button>
+          <div style={{ display: "flex", gap: 10, position: "relative" }}>
+            <button type="button" onClick={() => setAddMenuOpen((open) => !open)} style={{ border: "1px solid var(--app-accent, #2563eb)", background: "var(--app-accent, #2563eb)", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>+ Add income ▾</button>
+            {addMenuOpen ? <div style={{ position: "absolute", zIndex: 30, right: 52, top: "calc(100% + 7px)", width: 245, display: "grid", gap: 3, padding: 7, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, background: "var(--app-surface, #fff)", boxShadow: "0 16px 36px rgba(15, 23, 42, 0.18)" }}>{[["salary", "Salary"], ["hourly", "Hourly job"], ["contract", "Ongoing contract work"], ["bonus", "One-time bonus"], ["severance", "Severance payment"], ["one-time-w2", "Other one-time W-2 income"], ["one-time-contract", "One-time contract income"]].map(([type, label]) => <button key={type} type="button" onClick={() => addScenario(type as PaycheckScenario["incomeType"], label)} style={{ border: 0, borderRadius: 8, padding: "9px 10px", background: "transparent", color: "var(--app-text, #0f172a)", textAlign: "left", cursor: "pointer" }}>{label}</button>)}</div> : null}
             <button type="button" aria-label="Close paycheck estimate" onClick={onClose} style={{ border: "1px solid var(--app-border, #e2e8f0)", background: "var(--app-surface, #fff)", color: "var(--app-text, #0f172a)", borderRadius: 10, width: 42, fontSize: 24, cursor: "pointer" }}>×</button>
           </div>
         </div>
@@ -335,18 +370,17 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(300px, 0.65fr)", gap: 24, alignItems: "start" }}>
         <section style={{ ...cardStyle, display: "grid", gap: 22, minWidth: 0 }}>
           <div style={{ display: "grid", gap: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 18 }}>Income period</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 18 }}>Pay estimate</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
               <TextField label="Period name" value={activeScenario.label} onChange={(label) => updateScenario({ label })} />
-              <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Income type</span><select value={activeScenario.incomeType} onChange={(event) => updateScenario({ incomeType: event.target.value as PaycheckScenario["incomeType"] })} style={controlStyle}><option value="salary">Salary</option><option value="hourly">Hourly wages</option><option value="variable-w2">Variable W-2 wages</option><option value="contract">Contract / self-employment</option></select></label>
-              <DateField id="income-start-date" label="Start date" value={activeScenario.startDate} onChange={(startDate) => updateScenario({ startDate })} />
-              <DateField id="income-end-date" label="End date (optional)" minDate={activeScenario.startDate} value={activeScenario.endDate} onChange={(endDate) => updateScenario({ endDate })} />
-              {activeScenario.incomeType === "hourly" ? <><NumericField label="Hourly rate" prefix="$" value={activeScenario.hourlyRate} onChange={(hourlyRate) => updateScenario({ hourlyRate })} /><NumericField label="Average hours per week" value={activeScenario.hoursPerWeek} onChange={(hoursPerWeek) => updateScenario({ hoursPerWeek })} /></> : <NumericField label={activeScenario.incomeType === "salary" ? "Annual salary" : activeScenario.incomeType === "contract" ? "Annualized net contract income" : "Annualized W-2 wages"} prefix="$" value={activeScenario.inputs.annualSalary} onChange={(value) => updateInputs("annualSalary", value)} />}
-              <label style={{ display: "grid", gap: 6, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Pay frequency</span>
+              <label style={{ display: "grid", gap: 6, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Income type</span><select value={activeScenario.incomeType} onChange={(event) => updateScenario({ incomeType: event.target.value as PaycheckScenario["incomeType"] })} style={controlStyle}><option value="salary">Salary</option><option value="hourly">Hourly wages</option><option value="contract">Ongoing contract work</option><option value="bonus">One-time bonus</option><option value="severance">Severance payment</option><option value="one-time-w2">Other one-time W-2 income</option><option value="one-time-contract">One-time contract income</option></select></label>
+              {isOneOff(activeScenario) ? <DateField id="income-payment-date" label="Payment date" value={activeScenario.startDate} onChange={(startDate) => updateScenario({ startDate })} /> : <><DateField id="income-start-date" label="Start date" value={activeScenario.startDate} onChange={(startDate) => updateScenario({ startDate })} /><DateField id="income-end-date" label="End date (optional)" minDate={activeScenario.startDate} value={activeScenario.endDate} onChange={(endDate) => updateScenario({ endDate })} /></>}
+              {activeScenario.incomeType === "hourly" ? <><NumericField label="Hourly rate" prefix="$" value={activeScenario.hourlyRate} onChange={(hourlyRate) => updateScenario({ hourlyRate })} /><NumericField label="Average hours per week" value={activeScenario.hoursPerWeek} onChange={(hoursPerWeek) => updateScenario({ hoursPerWeek })} /></> : <NumericField label={isOneOff(activeScenario) ? "Payment amount" : activeScenario.incomeType === "salary" ? "Annual salary" : "Annualized net contract income"} prefix="$" value={activeScenario.inputs.annualSalary} onChange={(value) => updateInputs("annualSalary", value)} />}
+              {!isOneOff(activeScenario) ? <label style={{ display: "grid", gap: 6, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Pay frequency</span>
                 <select value={activeScenario.inputs.payFrequency} onChange={(event) => updateInputs("payFrequency", event.target.value as PayFrequency)} style={controlStyle}>
                   <option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="semimonthly">Semimonthly</option><option value="monthly">Monthly</option>
                 </select>
-              </label>
+              </label> : null}
             </div>
           </div>
 
@@ -355,10 +389,9 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
               <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Federal filing status</span><select value={activeScenario.inputs.filingStatus} onChange={(event) => updateInputs("filingStatus", event.target.value as FilingStatus)} style={controlStyle}><option value="single">Single or married filing separately</option><option value="married">Married filing jointly</option><option value="head">Head of household</option></select></label>
               <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Work state</span><select value={activeScenario.state} onChange={(event) => updateScenario({ state: event.target.value })} style={controlStyle}>{STATES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
-              <NumericField label="State and local tax per paycheck" prefix="$" value={activeScenario.inputs.stateWithholdingPerPaycheck} onChange={(value) => updateInputs("stateWithholdingPerPaycheck", value)} />
-              <NumericField label="Federal tax withheld per paycheck (optional override)" prefix="$" value={activeScenario.federalWithholdingPerPaycheck} onChange={(federalWithholdingPerPaycheck) => updateScenario({ federalWithholdingPerPaycheck })} />
+              <div style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Estimated state withholding</span><div style={{ ...controlStyle, color: "var(--app-text-muted, #64748b)" }}>{activeStateEstimate === null ? "Automatic estimate not yet available for this state" : money(activeStateEstimate)}</div></div>
             </div>
-            <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 700 }}>Additional income and withholding adjustments</summary><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginTop: 12 }}><NumericField label="Taxable imputed income per paycheck" prefix="$" value={activeScenario.inputs.imputedIncomePerPaycheck} onChange={(value) => updateInputs("imputedIncomePerPaycheck", value)} /><NumericField label="Other annual income used for withholding" prefix="$" value={activeScenario.inputs.w4OtherIncome} onChange={(value) => updateInputs("w4OtherIncome", value)} /><NumericField label="Extra tax per paycheck" prefix="$" value={activeScenario.inputs.w4AdditionalWithholding} onChange={(value) => updateInputs("w4AdditionalWithholding", value)} /></div></details>
+            <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 700 }}>Additional income and withholding adjustments</summary><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 12 }}><NumericField label={isOneOff(activeScenario) ? "Federal tax withheld from this payment" : "Federal tax withheld per paycheck (optional override)"} prefix="$" value={activeScenario.federalWithholdingPerPaycheck} onChange={(federalWithholdingPerPaycheck) => updateScenario({ federalWithholdingPerPaycheck })} /><NumericField label="Other annual income used for withholding" prefix="$" value={activeScenario.inputs.w4OtherIncome} onChange={(value) => updateInputs("w4OtherIncome", value)} /><NumericField label="Extra tax per paycheck" prefix="$" value={activeScenario.inputs.w4AdditionalWithholding} onChange={(value) => updateInputs("w4AdditionalWithholding", value)} /></div></details>
           </div>
 
           <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 750 }}>Add pre-tax benefits</summary>
@@ -371,6 +404,8 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
             </div>
           </details>
 
+          <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 750 }}>Add taxable employer-paid benefits</summary><div style={{ margin: "8px 0 12px", color: "var(--app-text-muted, #64748b)", fontSize: 12, lineHeight: 1.5 }}>Use these for benefit amounts reported as imputed income. They increase taxable wages without increasing cash pay.</div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}><NumericField label="Medical imputed income" prefix="$" value={activeScenario.imputedMedicalPerPaycheck} onChange={(value) => updateImputedIncome("imputedMedicalPerPaycheck", value)} /><NumericField label="Dental imputed income" prefix="$" value={activeScenario.imputedDentalPerPaycheck} onChange={(value) => updateImputedIncome("imputedDentalPerPaycheck", value)} /><NumericField label="Vision imputed income" prefix="$" value={activeScenario.imputedVisionPerPaycheck} onChange={(value) => updateImputedIncome("imputedVisionPerPaycheck", value)} /><NumericField label="Other imputed income" prefix="$" value={activeScenario.imputedOtherPerPaycheck} onChange={(value) => updateImputedIncome("imputedOtherPerPaycheck", value)} /></div></details>
+
           <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 750 }}>Add post-tax benefits</summary><div style={{ marginTop: 12 }}><NumericField label="Optional insurance and other post-tax deductions per paycheck" prefix="$" value={activeScenario.inputs.postTaxBenefitsPerPaycheck} onChange={(value) => updateInputs("postTaxBenefitsPerPaycheck", value)} /></div></details>
 
           <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 750 }}>Add retirement contributions</summary>
@@ -379,12 +414,12 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
               <NumericField label="Roth 401(k)" suffix="%" value={activeScenario.inputs.roth401kPercent} onChange={(value) => updateInputs("roth401kPercent", value)} />
             </div>
           </details>
-          {scenarios.length > 1 ? <button type="button" onClick={deleteScenario} style={{ justifySelf: "start", border: "1px solid #ef4444", color: "#b91c1c", background: "transparent", borderRadius: 10, padding: "9px 12px", cursor: "pointer" }}>Delete salary period</button> : null}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button type="button" onClick={() => void saveEstimate()} style={{ border: "1px solid var(--app-accent, #2563eb)", background: "var(--app-accent, #2563eb)", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>Save pay estimate</button>{scenarios.length > 1 ? <button type="button" onClick={deleteScenario} style={{ border: "1px solid #ef4444", color: "var(--app-danger-text, #b91c1c)", background: "var(--app-danger-bg, #fff1f2)", borderRadius: 10, padding: "9px 12px", cursor: "pointer" }}>Delete pay estimate</button> : null}</div>
         </section>
 
         <section style={{ ...cardStyle, display: "grid", gap: 14, position: "sticky", top: 16 }}>
-          <div><div style={{ color: "var(--app-text-muted, #64748b)", fontSize: 13 }}>{activeScenario.label}</div><div style={{ fontSize: 30, fontWeight: 850, letterSpacing: "-0.03em" }}>{money(activeScenario.incomeType === "contract" ? activeResult.grossPay : activeResult.netPay)}</div><div style={{ color: "var(--app-text-muted, #64748b)", fontSize: 13 }}>{activeScenario.incomeType === "contract" ? "average payment before taxes" : "estimated average take-home per paycheck"}</div></div>
-          {activeScenario.incomeType === "contract" ? <div style={{ padding: 12, borderRadius: 12, background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text-muted, #64748b)", fontSize: 13, lineHeight: 1.5 }}>No payroll withholding is assumed for contract income. The Annual Tax Estimate tab includes its projected federal income and self-employment taxes.</div> : <ScenarioResult result={activeResult} />}
+          <div><div style={{ color: "var(--app-text-muted, #64748b)", fontSize: 13 }}>{activeScenario.label}</div><div style={{ fontSize: 30, fontWeight: 850, letterSpacing: "-0.03em" }}>{money(isOneOff(activeScenario) ? activeScenario.inputs.annualSalary : activeScenario.incomeType === "contract" ? activeResult.grossPay : activeResult.netPay)}</div><div style={{ color: "var(--app-text-muted, #64748b)", fontSize: 13 }}>{isOneOff(activeScenario) ? "one-time gross payment" : activeScenario.incomeType === "contract" ? "average payment before taxes" : "estimated average take-home per paycheck"}</div></div>
+          {activeScenario.incomeType === "contract" || activeScenario.incomeType === "one-time-contract" ? <div style={{ padding: 12, borderRadius: 12, background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text-muted, #64748b)", fontSize: 13, lineHeight: 1.5 }}>No payroll withholding is assumed for contract income. The Annual Tax Estimate tab includes its projected federal income and self-employment taxes.</div> : isOneOff(activeScenario) ? <div style={{ display: "grid", gap: 3 }}><ResultLine label="Estimated federal withholding" value={money(activeScenario.federalWithholdingPerPaycheck || activeScenario.inputs.annualSalary * 0.22)} /><ResultLine label="Estimated state withholding" value={activeStateEstimate === null ? "Not available" : money(activeStateEstimate)} /></div> : <ScenarioResult result={activeResult} />}
           <p style={{ margin: "8px 0 0", color: "var(--app-text-muted, #64748b)", fontSize: 12, lineHeight: 1.5 }}>Federal estimates use the 2026 IRS payroll withholding method. Enter state and local tax from a paystub or official state calculator.</p>
         </section>
       </div>
