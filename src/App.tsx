@@ -1386,9 +1386,18 @@ export default function LoanInterestSimulatorMockup() {
   const [showFutureDetails, setShowFutureDetails] = useState(false);
   const [showLifetimeDetails, setShowLifetimeDetails] = useState(false);
   const [showComparisonDetails, setShowComparisonDetails] = useState(false);
+  const cardScheduleStart = accountType === "credit-card" ? (cardStatementDate || toDateInputValue(new Date())) : startingPrincipalDate;
+  const cardScheduleFirstPayment = (() => {
+    if (accountType !== "credit-card") return firstPaymentDate;
+    const base = parseDate(cardScheduleStart) ?? new Date();
+    const day = Math.min(28, Math.max(1, Number(dueDay) || 1));
+    let due = new Date(base.getFullYear(), base.getMonth(), day);
+    if (due <= base) due = new Date(base.getFullYear(), base.getMonth() + 1, day);
+    return toDateInputValue(due);
+  })();
   const deferredStartingPrincipal = useDeferredValue(startingPrincipal);
-  const deferredStartingPrincipalDate = useDeferredValue(startingPrincipalDate);
-  const deferredFirstPaymentDate = useDeferredValue(firstPaymentDate);
+  const deferredStartingPrincipalDate = useDeferredValue(cardScheduleStart);
+  const deferredFirstPaymentDate = useDeferredValue(cardScheduleFirstPayment);
   const deferredMinimumPayment = useDeferredValue(minimumPayment);
   const deferredAdditionalMonthlyPayment = useDeferredValue(additionalMonthlyPayment);
   const deferredAprPercent = useDeferredValue(aprPercent);
@@ -3705,7 +3714,7 @@ export default function LoanInterestSimulatorMockup() {
                   <DateField label="Starting principal date" id="starting-date" value={startingPrincipalDate} onChange={setStartingPrincipalDate} />
                   <DateField label="First scheduled payment date" id="first-payment-date" value={firstPaymentDate} minDate={startingPrincipalDate} onChange={setFirstPaymentDate} />
                   <DateField label="Calculate current balance through" id="target-date" value={targetDate} minDate={targetDateMinValue} onChange={setTargetDate} />
-                </FormSection> : <FormSection title="Card account cycle" helper="Credit cards use a statement cycle and due date rather than an amortization timeline.">
+                </FormSection> : <FormSection title="Card account cycle" helper="The statement date starts the billing cycle; the due day is the deadline for that cycle's payment.">
                   <DateField label="Statement date" id="card-statement-date" value={cardStatementDate} onChange={setCardStatementDate} />
                   <label style={{ display: "grid", gap: 6, width: 96 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Due day</span><input id="card-due-day" inputMode="numeric" value={dueDay} onChange={(event) => setDueDay(event.target.value.replace(/[^0-9]/g, "").slice(0, 2))} style={{ width: 96, boxSizing: "border-box", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }} /></label>
                 </FormSection>}
