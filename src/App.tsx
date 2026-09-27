@@ -2,6 +2,15 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { PaycheckPage } from "./PaycheckPage";
 import { DateField as SharedDateField } from "./components/DateField";
+import { LoanSidebar } from "./components/loans/LoanSidebar";
+import { CurrencyField, CurrencyInput } from "./components/ui/CurrencyField";
+import { Field } from "./components/ui/Field";
+import { LoginPage } from "./pages/LoginPage";
+import { estimateSavedLoanBalance as calculateSavedLoanBalance } from "./calculations/debt/estimateSavedLoanBalance";
+import { simulatePortfolio, type PortfolioStrategy } from "./calculations/debt/simulatePortfolio";
+import { accrueInterest } from "./calculations/loans/accrueInterest";
+import { addMonths, clampToMonth, formatMonth, parseDate, toDateInputValue } from "./calculations/loans/dateUtils";
+import { buildSchedule, getNextScheduledPaymentDate } from "./calculations/loans/schedule";
 import {
   cloudStorageEnabled,
   cloudStorageStatus,
@@ -15,12 +24,16 @@ import {
   saveCloudLoans,
   saveCloudProfile,
 } from "./lib/cloudStorage";
-
-function parseCurrency(value: string): number {
-  const cleaned = value.replace(/[$,\s]/g, "");
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : 0;
-}
+import type {
+  DayCountBasis,
+  DueDayChange,
+  FutureRecurringChange,
+  PaymentEvent,
+  PauseMode,
+  PausePeriod,
+  ScheduleRow,
+} from "./types/loans";
+import { parseCurrency } from "./utils/currency";
 
 function formatCurrency(n: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -60,19 +73,6 @@ function formatTimeShaved(deltaMonths: number): string {
   return deltaMonths > 0 ? value : `${value} added`;
 }
 
-function toDateInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function parseDate(value: string): Date | null {
-  if (!value) return null;
-  const d = new Date(`${value}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
@@ -92,67 +92,6 @@ function parseMonthInput(value: string): Date | null {
   }
   return new Date(year, month - 1, 1);
 }
-
-function formatMonth(date: Date): string {
-  return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, "0")}`;
-}
-
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  const day = d.getDate();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + months);
-  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  d.setDate(Math.min(day, lastDay));
-  return d;
-}
-
-function clampToMonth(year: number, monthIndex: number, day: number): Date {
-  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
-  return new Date(year, monthIndex, Math.min(day, lastDay));
-}
-
-function moveToNextWeekday(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  if (day === 6) d.setDate(d.getDate() + 2);
-  if (day === 0) d.setDate(d.getDate() + 1);
-  return d;
-}
-
-function diffDays(start: Date, end: Date): number {
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
-  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-  return Math.max(0, Math.round((endUtc - startUtc) / msPerDay));
-}
-
-type PaymentEvent = {
-  amount: number;
-  date: Date;
-  feeAmount?: number;
-  id?: string;
-  interestAmount?: number;
-  label: string;
-  principalAmount?: number;
-  rawRow?: Record<string, string>;
-  source: "history" | "extra";
-};
-
-type FutureRecurringChange = {
-  amount: number;
-  effectiveDate: Date;
-  endDate?: Date;
-  id: string;
-  kind: "minimum" | "monthly-extra";
-};
-
-type DueDayChange = {
-  day: number;
-  endMonth?: Date;
-  id: string;
-  startMonth: Date;
-};
 
 type SerializedPaymentEvent = Omit<PaymentEvent, "date"> & {
   date: string;
@@ -280,67 +219,6 @@ type ThemeDefinition = {
   textMuted: string;
 };
 
-type PauseMode = "accrues" | "paused";
-
-type PausePeriod = {
-  endMonth: Date;
-  id: string;
-  mode: PauseMode;
-  startMonth: Date;
-};
-
-type ScheduleRow = {
-  accruedInterest: number;
-  cycle: number | null;
-  daysAccrued: number;
-  endingInterest: number;
-  endingPrincipal: number;
-  eventType: "scheduled" | "history" | "extra" | "paused" | "snapshot";
-  interestPaid: number;
-  label: string;
-  negativeAmortization: boolean;
-  paymentAmount: number;
-  paymentDate: Date;
-  principalShareOfPayment: number | null;
-  principalPaid: number;
-  rowId: string;
-  startingInterest: number;
-  startingPrincipal: number;
-  totalInterestBeforePayment: number;
-};
-
-type ScheduleResult = {
-  currentInterest: number;
-  currentPrincipal: number;
-  errors: string[];
-  paidOff: boolean;
-  payoffDate: Date | null;
-  rows: ScheduleRow[];
-  hasNegativeAmortization: boolean;
-  totalBalance: number;
-  totalInterestPaid: number;
-  totalPaid: number;
-  totalPrincipalPaid: number;
-};
-
-type ScheduledMode = "always" | "after-cutoff" | "never";
-type DayCountBasis = "365" | "actual-year";
-
-function isLeapYear(year: number): boolean {
-  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-}
-
-function isMonthWithinPause(date: Date, pausePeriod: PausePeriod): boolean {
-  const value = date.getFullYear() * 12 + date.getMonth();
-  const start = pausePeriod.startMonth.getFullYear() * 12 + pausePeriod.startMonth.getMonth();
-  const end = pausePeriod.endMonth.getFullYear() * 12 + pausePeriod.endMonth.getMonth();
-  return value >= start && value <= end;
-}
-
-function getPausePeriodForDate(date: Date, pausePeriods: PausePeriod[]): PausePeriod | null {
-  return pausePeriods.find((pausePeriod) => isMonthWithinPause(date, pausePeriod)) ?? null;
-}
-
 function formatPauseRange(pausePeriod: PausePeriod): string {
   return `${formatMonth(pausePeriod.startMonth)} to ${formatMonth(pausePeriod.endMonth)}`;
 }
@@ -359,20 +237,6 @@ function monthValue(date: Date): number {
 function pausePeriodsOverlap(left: PausePeriod, right: PausePeriod): boolean {
   return monthValue(left.startMonth) <= monthValue(right.endMonth) &&
     monthValue(right.startMonth) <= monthValue(left.endMonth);
-}
-
-function getEffectiveDueDayForMonth(
-  date: Date,
-  baseDueDay: number,
-  dueDayChanges: Array<{ day: number; endMonth?: Date; startMonth: Date }>,
-): number {
-  const value = monthValue(date);
-  const match = dueDayChanges.find((change) => {
-    const start = monthValue(change.startMonth);
-    const end = change.endMonth ? monthValue(change.endMonth) : Number.POSITIVE_INFINITY;
-    return value >= start && value <= end;
-  });
-  return match?.day ?? baseDueDay;
 }
 
 function getDifferenceLabel(params: {
@@ -471,481 +335,6 @@ const THEME_DEFINITIONS: Record<ThemeId, ThemeDefinition> = {
     textMuted: "#64748b",
   },
 };
-
-function accrueInterest(params: {
-  aprPercent: number;
-  dayCountBasis: DayCountBasis;
-  endDate: Date;
-  pausePeriods?: PausePeriod[];
-  principal: number;
-  roundDailyInterest: boolean;
-  startDate: Date;
-}) {
-  const { aprPercent, dayCountBasis, endDate, pausePeriods = [], principal, roundDailyInterest, startDate } = params;
-
-  if (endDate <= startDate || principal <= 0 || aprPercent < 0) {
-    return 0;
-  }
-
-  let accruedInterest = 0;
-  const cursor = new Date(startDate);
-
-  while (cursor < endDate) {
-    const isInterestPaused = pausePeriods.some(
-      (pausePeriod) => pausePeriod.mode === "paused" && isMonthWithinPause(cursor, pausePeriod),
-    );
-
-    if (!isInterestPaused) {
-      const denominator =
-        dayCountBasis === "365" ? 365 : isLeapYear(cursor.getFullYear()) ? 366 : 365;
-      const dailyInterest = principal * (aprPercent / 100 / denominator);
-      accruedInterest += roundDailyInterest
-        ? Math.round(dailyInterest * 100) / 100
-        : dailyInterest;
-    }
-
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  return accruedInterest;
-}
-
-function getNextScheduledPaymentDate(params: {
-  afterDate: Date;
-  dueDayChanges?: Array<{ day: number; endMonth?: Date; startMonth: Date }>;
-  dueDay: number;
-  firstPaymentDate: Date;
-  moveWeekend: boolean;
-}) {
-  const { afterDate, dueDay, dueDayChanges = [], firstPaymentDate, moveWeekend } = params;
-  let scheduledPaymentDate = new Date(firstPaymentDate);
-
-  while (scheduledPaymentDate <= afterDate) {
-    const nextMonthBase = addMonths(scheduledPaymentDate, 1);
-    const effectiveDueDay = getEffectiveDueDayForMonth(nextMonthBase, dueDay, dueDayChanges);
-    let nextPayment = clampToMonth(nextMonthBase.getFullYear(), nextMonthBase.getMonth(), effectiveDueDay);
-    if (moveWeekend) nextPayment = moveToNextWeekday(nextPayment);
-    scheduledPaymentDate = nextPayment;
-  }
-
-  return scheduledPaymentDate;
-}
-
-
-function buildSchedule(params: {
-  actualPayments: PaymentEvent[];
-  appendAsOfRow?: boolean;
-  aprPercent: number;
-  dayCountBasis: DayCountBasis;
-  deletedRowIds?: Set<string>;
-  dueDay: number;
-  firstPaymentDate: Date;
-  minimumPayment: number;
-  moveWeekend: boolean;
-  paymentAmountOverrides?: Record<string, string>;
-  paymentDateOverrides?: Record<string, string>;
-  paymentLabelOverrides?: Record<string, string>;
-  pausePeriods?: PausePeriod[];
-  roundDailyInterest: boolean;
-  scheduledDueDayChanges?: Array<{ day: number; endMonth?: Date; startMonth: Date }>;
-  scheduledPaymentAdjustments?: Array<{ amount: number; endDate?: Date; startDate: Date }>;
-  scheduledCutoffDate?: Date;
-  scheduledMode: ScheduledMode;
-  startingInterest?: number;
-  startingPrincipal: number;
-  startingPrincipalDate: Date;
-  targetDate: Date;
-}) {
-  const {
-    actualPayments,
-    appendAsOfRow = false,
-    aprPercent,
-    dayCountBasis,
-    deletedRowIds,
-    dueDay,
-    firstPaymentDate,
-    minimumPayment,
-    moveWeekend,
-    paymentAmountOverrides,
-    paymentDateOverrides,
-    paymentLabelOverrides,
-    pausePeriods = [],
-    roundDailyInterest,
-    scheduledDueDayChanges = [],
-    scheduledPaymentAdjustments = [],
-    scheduledCutoffDate,
-    scheduledMode,
-    startingInterest = 0,
-    startingPrincipal,
-    startingPrincipalDate,
-    targetDate,
-  } = params;
-
-  const emptyResult = (errors: string[]): ScheduleResult => ({
-    currentInterest: 0,
-    currentPrincipal: 0,
-    errors,
-    paidOff: false,
-    payoffDate: null,
-    rows: [],
-    hasNegativeAmortization: false,
-    totalBalance: 0,
-    totalInterestPaid: 0,
-    totalPaid: 0,
-    totalPrincipalPaid: 0,
-  });
-
-  if (startingPrincipal <= 0 || aprPercent < 0 || minimumPayment < 0) {
-    return emptyResult(["Enter valid numeric values."]);
-  }
-  if (targetDate < startingPrincipalDate) {
-    return emptyResult(["Target date cannot be earlier than the starting principal date."]);
-  }
-  if (firstPaymentDate <= startingPrincipalDate) {
-    return emptyResult(["First payment date must be after the starting principal date."]);
-  }
-  if (dueDay < 1 || dueDay > 31) {
-    return emptyResult(["Due day must be between 1 and 31."]);
-  }
-
-  const rows: ScheduleRow[] = [];
-  const errors: string[] = [];
-
-  let principal = startingPrincipal;
-  let unpaidInterest = startingInterest;
-  let previousEventDate = new Date(startingPrincipalDate);
-  let scheduledPaymentDate = new Date(firstPaymentDate);
-  let cycle = 1;
-  let paymentIndex = 0;
-  let totalPaid = 0;
-  let totalInterestPaid = 0;
-  let totalPrincipalPaid = 0;
-  let paidOff = false;
-  let payoffDate: Date | null = null;
-
-  const maxEvents = 3000;
-  const cutoffTime = scheduledCutoffDate?.getTime() ?? Number.NEGATIVE_INFINITY;
-  const amountOverrides = paymentAmountOverrides ?? {};
-  const dateOverrides = paymentDateOverrides ?? {};
-  const labelOverrides = paymentLabelOverrides ?? {};
-  const deletedIds = deletedRowIds ?? new Set<string>();
-
-  const canUseScheduledPayment = (date: Date) => {
-    if (scheduledMode === "never") return false;
-    if (scheduledMode === "always") return true;
-    return date.getTime() > cutoffTime;
-  };
-
-  const shouldSkipDeletedScheduledRow = (rowId: string, date: Date) =>
-    deletedIds.has(rowId) && !getPausePeriodForDate(date, pausePeriods);
-  const getFollowingScheduledPaymentDate = (currentDate: Date) => {
-    const nextMonthBase = addMonths(currentDate, 1);
-    const effectiveDueDay = getEffectiveDueDayForMonth(nextMonthBase, dueDay, scheduledDueDayChanges);
-    let nextPayment = clampToMonth(nextMonthBase.getFullYear(), nextMonthBase.getMonth(), effectiveDueDay);
-    if (moveWeekend) nextPayment = moveToNextWeekday(nextPayment);
-    return nextPayment;
-  };
-
-  const getAdjustedActualPayment = (payment: PaymentEvent) => {
-    const rowId = payment.id ?? `${payment.source}-${toDateInputValue(payment.date)}-${payment.amount}`;
-    const overriddenDate = dateOverrides[rowId] ? parseDate(dateOverrides[rowId]) : null;
-    const overriddenAmount = amountOverrides[rowId] ? parseCurrency(amountOverrides[rowId]) : NaN;
-    return {
-      ...payment,
-      amount: Number.isFinite(overriddenAmount) && overriddenAmount > 0 ? overriddenAmount : payment.amount,
-      date: overriddenDate ?? payment.date,
-      rowId,
-    };
-  };
-
-  for (let eventCount = 0; eventCount < maxEvents; eventCount += 1) {
-    while (paymentIndex < actualPayments.length) {
-      const candidate = getAdjustedActualPayment(actualPayments[paymentIndex]);
-      if (!deletedIds.has(candidate.rowId)) {
-        break;
-      }
-      paymentIndex += 1;
-    }
-
-    const nextActual = paymentIndex < actualPayments.length ? getAdjustedActualPayment(actualPayments[paymentIndex]) : null;
-    const nextActualTime = nextActual?.date.getTime() ?? Number.POSITIVE_INFINITY;
-
-    let scheduledRowId = `scheduled-${cycle}`;
-    let adjustedScheduledDate = dateOverrides[scheduledRowId]
-      ? parseDate(dateOverrides[scheduledRowId]) ?? scheduledPaymentDate
-      : scheduledPaymentDate;
-    let adjustedScheduledAmount = amountOverrides[scheduledRowId]
-      ? parseCurrency(amountOverrides[scheduledRowId])
-      : minimumPayment;
-
-    const scheduledAdjustment = scheduledPaymentAdjustments.reduce((sum, adjustment) => {
-      const isAfterStart = adjustedScheduledDate >= adjustment.startDate;
-      const isBeforeEnd = adjustment.endDate ? adjustedScheduledDate <= adjustment.endDate : true;
-      return isAfterStart && isBeforeEnd ? sum + adjustment.amount : sum;
-    }, 0);
-
-    adjustedScheduledAmount += scheduledAdjustment;
-    if (!(adjustedScheduledAmount > 0)) {
-      adjustedScheduledAmount = minimumPayment;
-    }
-
-    while (
-      (!canUseScheduledPayment(adjustedScheduledDate) || shouldSkipDeletedScheduledRow(scheduledRowId, adjustedScheduledDate)) &&
-      scheduledPaymentDate <= targetDate
-    ) {
-      scheduledPaymentDate = getFollowingScheduledPaymentDate(scheduledPaymentDate);
-      cycle += 1;
-      scheduledRowId = `scheduled-${cycle}`;
-      adjustedScheduledDate = dateOverrides[scheduledRowId]
-        ? parseDate(dateOverrides[scheduledRowId]) ?? scheduledPaymentDate
-        : scheduledPaymentDate;
-      adjustedScheduledAmount = amountOverrides[scheduledRowId]
-        ? parseCurrency(amountOverrides[scheduledRowId])
-        : minimumPayment;
-      const nextScheduledAdjustment = scheduledPaymentAdjustments.reduce((sum, adjustment) => {
-        const isAfterStart = adjustedScheduledDate >= adjustment.startDate;
-        const isBeforeEnd = adjustment.endDate ? adjustedScheduledDate <= adjustment.endDate : true;
-        return isAfterStart && isBeforeEnd ? sum + adjustment.amount : sum;
-      }, 0);
-      adjustedScheduledAmount += nextScheduledAdjustment;
-      if (!(adjustedScheduledAmount > 0)) {
-        adjustedScheduledAmount = minimumPayment;
-      }
-    }
-
-    const nextScheduledTime = canUseScheduledPayment(adjustedScheduledDate)
-      ? adjustedScheduledDate.getTime()
-      : Number.POSITIVE_INFINITY;
-
-    if (nextActualTime === Number.POSITIVE_INFINITY && nextScheduledTime === Number.POSITIVE_INFINITY) {
-      break;
-    }
-
-    const useActual = nextActualTime < nextScheduledTime;
-    const eventDate = useActual ? new Date(nextActual!.date) : new Date(adjustedScheduledDate);
-    if (eventDate > targetDate) {
-      break;
-    }
-
-    if (principal <= 0.000001 && unpaidInterest <= 0.000001) {
-      paidOff = true;
-      payoffDate = new Date(previousEventDate);
-      break;
-    }
-
-    const days = diffDays(previousEventDate, eventDate);
-    const startingPrincipalForRow = principal;
-    const startingInterestForRow = unpaidInterest;
-
-    const accruedInterest = accrueInterest({
-      aprPercent,
-      dayCountBasis,
-      endDate: eventDate,
-      pausePeriods,
-      principal: startingPrincipalForRow,
-      roundDailyInterest,
-      startDate: previousEventDate,
-    });
-
-    const totalInterestBeforePayment = startingInterestForRow + accruedInterest;
-    const scheduledPausePeriod = useActual ? null : getPausePeriodForDate(eventDate, pausePeriods);
-    const paymentAmount = scheduledPausePeriod ? 0 : useActual ? nextActual!.amount : adjustedScheduledAmount;
-    const interestPaid = scheduledPausePeriod ? 0 : Math.min(paymentAmount, totalInterestBeforePayment);
-    const principalPaid = scheduledPausePeriod
-      ? 0
-      : Math.min(startingPrincipalForRow, Math.max(0, paymentAmount - interestPaid));
-    const negativeAmortization = scheduledPausePeriod
-      ? scheduledPausePeriod.mode === "accrues" && accruedInterest > 0
-      : paymentAmount > 0 && principalPaid <= 0.000001 && totalInterestBeforePayment > 0;
-
-    unpaidInterest = Math.max(0, totalInterestBeforePayment - interestPaid);
-    principal = Math.max(0, startingPrincipalForRow - principalPaid);
-
-    rows.push({
-      accruedInterest,
-      cycle: useActual ? null : cycle,
-      daysAccrued: days,
-      endingInterest: unpaidInterest,
-      endingPrincipal: principal,
-      eventType: scheduledPausePeriod ? "paused" : useActual ? nextActual!.source : "scheduled",
-      interestPaid,
-      label: scheduledPausePeriod
-        ? scheduledPausePeriod.mode === "paused"
-          ? "Payment paused (interest paused)"
-          : "Payment paused"
-        : useActual
-          ? labelOverrides[nextActual!.rowId] || nextActual!.label
-          : labelOverrides[scheduledRowId] || "Scheduled payment",
-      negativeAmortization,
-      paymentAmount,
-      paymentDate: new Date(eventDate),
-      principalShareOfPayment: paymentAmount > 0 ? principalPaid / paymentAmount : 0,
-      principalPaid,
-      rowId: useActual ? nextActual!.rowId : scheduledRowId,
-      startingInterest: startingInterestForRow,
-      startingPrincipal: startingPrincipalForRow,
-      totalInterestBeforePayment,
-    });
-
-    totalPaid += paymentAmount;
-    totalInterestPaid += interestPaid;
-    totalPrincipalPaid += principalPaid;
-    previousEventDate = new Date(eventDate);
-
-    if (useActual) {
-      paymentIndex += 1;
-    } else {
-      scheduledPaymentDate = getFollowingScheduledPaymentDate(scheduledPaymentDate);
-      cycle += 1;
-    }
-
-    if (principal <= 0.000001 && unpaidInterest <= 0.000001) {
-      paidOff = true;
-      payoffDate = new Date(eventDate);
-      break;
-    }
-  }
-
-  if (!paidOff && rows.length >= maxEvents) {
-    errors.push("Reached event limit while simulating. Double-check payment amounts and dates.");
-  }
-
-  const finalAccruedInterest = accrueInterest({
-    aprPercent,
-    dayCountBasis,
-    endDate: targetDate,
-    pausePeriods,
-    principal,
-    roundDailyInterest,
-    startDate: previousEventDate,
-  });
-
-  const currentInterest = unpaidInterest + finalAccruedInterest;
-  const totalBalance = principal + currentInterest;
-
-  if (appendAsOfRow && targetDate >= previousEventDate) {
-    rows.push({
-      accruedInterest: finalAccruedInterest,
-      cycle: null,
-      daysAccrued: diffDays(previousEventDate, targetDate),
-      endingInterest: currentInterest,
-      endingPrincipal: principal,
-      eventType: "snapshot",
-      interestPaid: 0,
-      label: "As of target date",
-      negativeAmortization: false,
-      paymentAmount: 0,
-      paymentDate: new Date(targetDate),
-      principalShareOfPayment: null,
-      principalPaid: 0,
-      rowId: `snapshot-${toDateInputValue(targetDate)}`,
-      startingInterest: unpaidInterest,
-      startingPrincipal: principal,
-      totalInterestBeforePayment: currentInterest,
-    });
-  }
-
-  return {
-    currentInterest,
-    currentPrincipal: principal,
-    errors,
-    hasNegativeAmortization: rows.some((row) => row.negativeAmortization),
-    paidOff,
-    payoffDate,
-    rows,
-    totalBalance,
-    totalInterestPaid,
-    totalPaid,
-    totalPrincipalPaid,
-  };
-}
-
-type FieldProps = {
-  commitMode?: "blur" | "change";
-  id: string;
-  label: string;
-  onChange: (value: string) => void;
-  type?: "text" | "date" | "month" | "password";
-  value: string;
-};
-
-function Field({ commitMode = "change", id, label, onChange, type = "text", value }: FieldProps) {
-  const [draftValue, setDraftValue] = useState(value);
-
-  useEffect(() => {
-    setDraftValue(value);
-  }, [value]);
-
-  const commit = () => {
-    if (draftValue !== value) {
-      onChange(draftValue);
-    }
-  };
-
-  return (
-    <label htmlFor={id} style={{ display: "grid", gap: 6 }}>
-      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--app-heading, #334155)" }}>{label}</span>
-      <input
-        id={id}
-        type={type}
-        value={commitMode === "blur" ? draftValue : value}
-        onBlur={commitMode === "blur" ? commit : undefined}
-        onChange={(event) => {
-          if (commitMode === "blur") {
-            setDraftValue(event.target.value);
-            return;
-          }
-          onChange(event.target.value);
-        }}
-        onKeyDown={
-          commitMode === "blur"
-            ? (event) => {
-                if (event.key === "Enter") {
-                  commit();
-                }
-              }
-            : undefined
-        }
-        style={{
-          border: "1px solid var(--app-border-strong, #cbd5e1)",
-          borderRadius: 10,
-          padding: "10px 12px",
-          fontSize: 15,
-          background: "var(--app-input-bg, #fff)",
-          color: "var(--app-text, #0f172a)",
-        }}
-      />
-    </label>
-  );
-}
-
-function CurrencyInput({ compact = false, id, onChange, value }: { compact?: boolean; id?: string; onChange: (value: string) => void; value: string }) {
-  const formatValue = (nextValue: string) => nextValue.trim() === "" ? "" : parseCurrency(nextValue).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const [draftValue, setDraftValue] = useState(() => formatValue(value));
-  const [focused, setFocused] = useState(false);
-
-  useEffect(() => {
-    if (!focused) setDraftValue(formatValue(value));
-  }, [focused, value]);
-
-  const commit = () => {
-    const formatted = formatValue(draftValue);
-    setFocused(false);
-    setDraftValue(formatted);
-    onChange(formatted);
-  };
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", width: "100%", minWidth: 0, border: "1px solid var(--app-border-strong, #cbd5e1)", borderRadius: compact ? 8 : 10, background: "var(--app-input-bg, #fff)" }}>
-      <span aria-hidden="true" style={{ paddingLeft: compact ? 7 : 11, color: "var(--app-text-muted, #64748b)", fontSize: compact ? 12 : 15 }}>$</span>
-      <input id={id} type="text" inputMode="decimal" value={draftValue} onFocus={() => setFocused(true)} onChange={(event) => setDraftValue(event.target.value.replace(/[^0-9.,]/g, ""))} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") commit(); }} style={{ width: "100%", minWidth: 0, border: 0, outline: 0, padding: compact ? "6px 6px" : "10px 10px", borderRadius: compact ? 8 : 10, fontSize: compact ? 12 : 15, background: "transparent", color: "var(--app-text, #0f172a)" }} />
-    </div>
-  );
-}
-
-function CurrencyField({ id, label, onChange, value }: { id: string; label: string; onChange: (value: string) => void; value: string }) {
-  return <label htmlFor={id} style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 14, fontWeight: 600, color: "var(--app-heading, #334155)" }}>{label}</span><CurrencyInput id={id} value={value} onChange={onChange} /></label>;
-}
 
 function DatePickerInput({
   compact = false,
@@ -1758,58 +1147,16 @@ function FormSection({
   );
 }
 
-type PortfolioStrategy = "avalanche" | "snowball" | "minimum";
-
 function estimateSavedLoanBalance(data: LoanSnapshot) {
-  let balance = parseCurrency(data.startingPrincipal);
-  const start = parseDate(data.startingPrincipalDate);
-  const target = parseDate(data.targetDate);
-  if (!start || !target || target <= start) return balance;
-  const payment = parseCurrency(data.minimumPayment) + parseCurrency(data.additionalMonthlyPayment);
-  const months = Math.max(0, (target.getFullYear() - start.getFullYear()) * 12 + target.getMonth() - start.getMonth());
-  for (let month = 0; month < months && balance > 0; month += 1) balance = Math.max(0, balance + balance * (Number(data.aprPercent) || 0) / 100 / 12 - payment);
-  const oneOffPaid = data.oneOffPayments.reduce((sum, item) => sum + (parseDate(item.date) && parseDate(item.date)! <= target ? item.amount : 0), 0);
-  return Math.max(0, balance - oneOffPaid);
-}
-
-function simulatePortfolio(loans: Array<{ apr: number; balance: number; id: string; minimum: number; name: string }>, strategy: PortfolioStrategy, extra: number) {
-  const balances = new Map(loans.map((loan) => [loan.id, loan.balance]));
-  const startingTotal = loans.reduce((sum, loan) => sum + loan.balance, 0);
-  const fixedBudget = loans.reduce((sum, loan) => sum + loan.minimum, 0) + (strategy === "minimum" ? 0 : extra);
-  const snapshots: Array<{ date: Date; balances: Record<string, number> }> = [];
-  let totalInterest = 0;
-  let month = 0;
-  while ([...balances.values()].some((balance) => balance > 0.005) && month < 1200) {
-    month += 1;
-    for (const loan of loans) {
-      const balance = balances.get(loan.id) ?? 0;
-      if (balance <= 0) continue;
-      const interest = balance * loan.apr / 100 / 12;
-      balances.set(loan.id, balance + interest);
-      totalInterest += interest;
-    }
-    let spent = 0;
-    for (const loan of loans) {
-      const balance = balances.get(loan.id) ?? 0;
-      const payment = Math.min(balance, loan.minimum);
-      balances.set(loan.id, balance - payment);
-      spent += payment;
-    }
-    if (strategy !== "minimum") {
-      let remaining = Math.max(0, fixedBudget - spent);
-      const ordered = [...loans].sort((a, b) => strategy === "avalanche" ? b.apr - a.apr || a.balance - b.balance : (balances.get(a.id) ?? 0) - (balances.get(b.id) ?? 0) || b.apr - a.apr);
-      for (const loan of ordered) {
-        const balance = balances.get(loan.id) ?? 0;
-        const payment = Math.min(balance, remaining);
-        balances.set(loan.id, balance - payment);
-        remaining -= payment;
-        if (remaining <= 0.005) break;
-      }
-    }
-    if (month <= 12) snapshots.push({ date: new Date(new Date().getFullYear(), new Date().getMonth() + month, 1), balances: Object.fromEntries(balances) });
-  }
-  const payoffDate = month >= 1200 ? null : new Date(new Date().getFullYear(), new Date().getMonth() + month, 1);
-  return { payoffDate, months: month, snapshots, startingTotal, totalInterest };
+  return calculateSavedLoanBalance({
+    aprPercent: Number(data.aprPercent) || 0,
+    additionalMonthlyPayment: parseCurrency(data.additionalMonthlyPayment),
+    minimumPayment: parseCurrency(data.minimumPayment),
+    oneOffPayments: data.oneOffPayments.map((payment) => ({ amount: payment.amount, date: parseDate(payment.date) })),
+    startingPrincipal: parseCurrency(data.startingPrincipal),
+    startingPrincipalDate: parseDate(data.startingPrincipalDate),
+    targetDate: parseDate(data.targetDate),
+  });
 }
 
 function DebtOverview({ loans, theme }: { loans: SavedLoanRecord[]; theme: ThemeDefinition }) {
@@ -1831,52 +1178,6 @@ function DebtOverview({ loans, theme }: { loans: SavedLoanRecord[]; theme: Theme
     <section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 20, boxShadow: theme.cardShadow, overflow: "hidden" }}><h3 style={{ margin: "0 0 14px" }}>Loans</h3><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Loan", "Balance", "APR", "Monthly payment", "Priority"].map((heading) => <th key={heading} style={{ padding: 9, textAlign: "left", borderBottom: `1px solid ${theme.cardBorder}`, color: theme.textMuted, fontSize: 12 }}>{heading}</th>)}</tr></thead><tbody>{[...portfolioLoans].sort((a, b) => strategy === "avalanche" ? b.apr - a.apr : strategy === "snowball" ? a.balance - b.balance : 0).map((loan, index) => <tr key={loan.id}><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}`, fontWeight: 650 }}>{loan.name}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{formatCurrency(loan.balance)}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{formatPercent(loan.apr)}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{formatCurrency(loan.minimum)}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{strategy === "minimum" ? "—" : index + 1}</td></tr>)}</tbody></table></section>
     <section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 20, boxShadow: theme.cardShadow, overflowX: "auto" }}><h3 style={{ margin: "0 0 14px" }}>Next 12 months</h3><table style={{ borderCollapse: "collapse", minWidth: 980, width: "100%" }}><thead><tr><th style={{ position: "sticky", left: 0, background: theme.surface, padding: 8, textAlign: "left" }}>Loan</th>{selected.snapshots.map((snapshot) => <th key={snapshot.date.toISOString()} style={{ padding: 8, fontSize: 11, color: theme.textMuted }}>{snapshot.date.toLocaleString("en-US", { month: "short", year: "2-digit" })}</th>)}</tr></thead><tbody>{portfolioLoans.map((loan) => <tr key={loan.id}><td style={{ position: "sticky", left: 0, background: theme.surface, padding: 8, fontWeight: 650 }}>{loan.name}</td>{selected.snapshots.map((snapshot) => <td key={snapshot.date.toISOString()} style={{ padding: 8, fontSize: 12, borderTop: `1px solid ${theme.cardBorder}` }}>{formatCurrency(snapshot.balances[loan.id] ?? 0)}</td>)}</tr>)}</tbody></table></section></> : null}
   </main>;
-}
-
-function LoanSidebar({
-  collapsed,
-  currentLoanId,
-  loanName,
-  loans,
-  onAdd,
-  onCollapse,
-  onDelete,
-  onOverview,
-  onSelect,
-  saveStatus,
-}: {
-  collapsed: boolean;
-  currentLoanId: string | null;
-  loanName: string;
-  loans: SavedLoanRecord[];
-  onAdd: () => void;
-  onCollapse: () => void;
-  onDelete: (loanId: string) => void;
-  onOverview: () => void;
-  onSelect: (loanId: string) => void;
-  saveStatus: string;
-}) {
-  return (
-    <aside style={{ position: "sticky", top: 24, minHeight: "calc(100vh - 48px)", padding: collapsed ? 6 : 16, display: "grid", gridTemplateRows: collapsed ? "auto" : "auto auto 1fr auto", alignContent: "start", gap: 14, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: collapsed ? 10 : 18, background: "var(--app-surface, #fff)", boxShadow: "0 10px 30px rgba(15, 23, 42, 0.07)" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "space-between", gap: 8 }}>
-        {!collapsed ? <strong style={{ fontSize: 16 }}>Your loans</strong> : null}
-        <button type="button" aria-label={collapsed ? "Expand loan sidebar" : "Collapse loan sidebar"} onClick={onCollapse} style={{ width: collapsed ? 30 : 36, height: collapsed ? 30 : 36, display: "grid", placeItems: "center", border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 8, background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", cursor: "pointer" }}><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor"/><path d="M6 3v10" stroke="currentColor"/><path d={collapsed ? "m9 6 2 2-2 2" : "m11 6-2 2 2 2"} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
-      </div>
-      {!collapsed ? <button type="button" onClick={onAdd} title="Add loan" style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: 9, width: "100%", border: "1px solid var(--app-accent, #2563eb)", borderRadius: 11, padding: "10px 12px", background: "var(--app-accent, #2563eb)", color: "#fff", fontWeight: 750, cursor: "pointer" }}>
-        <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>Add loan
-      </button> : null}
-      {!collapsed ? <div style={{ display: "grid", gap: 7, alignContent: "start" }}>
-        <button type="button" onClick={onOverview} style={{ width: "100%", textAlign: "left", border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 10, padding: "10px 12px", background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", fontWeight: 750, cursor: "pointer" }}>Overall summary</button>
-        {!currentLoanId && loanName ? <div style={{ padding: collapsed ? "10px 0" : "10px 12px", textAlign: collapsed ? "center" : "left", borderRadius: 10, background: "var(--app-accent-soft, #dbeafe)", color: "var(--app-text, #0f172a)", fontSize: 13, fontWeight: 700 }} title="Unsaved loan">{collapsed ? "*" : `${loanName || "New loan"} (draft)`}</div> : null}
-        {loans.map((loan) => {
-          const selected = loan.id === currentLoanId;
-          return <div key={loan.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 5, alignItems: "center", border: selected ? "1px solid var(--app-accent, #2563eb)" : "1px solid transparent", borderRadius: 10, background: selected ? "var(--app-accent-soft, #dbeafe)" : "transparent" }}><button type="button" title={loan.name} onClick={() => onSelect(loan.id)} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left", border: 0, padding: "10px 8px 10px 12px", background: "transparent", color: "var(--app-text, #0f172a)", fontWeight: selected ? 750 : 600, cursor: "pointer" }}>{loan.name}</button><button type="button" aria-label={`Delete ${loan.name}`} title="Delete loan" onClick={() => onDelete(loan.id)} style={{ width: 30, height: 30, display: "grid", placeItems: "center", border: 0, borderRadius: 7, background: "transparent", color: "var(--app-danger-text, #b91c1c)", cursor: "pointer" }}><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg></button></div>;
-        })}
-        {loans.length === 0 && !collapsed ? <div style={{ padding: "12px 4px", color: "var(--app-text-muted, #64748b)", fontSize: 12, lineHeight: 1.5 }}>Add your first loan to begin building a payoff plan.</div> : null}
-      </div> : null}
-      {!collapsed && saveStatus ? <div style={{ fontSize: 12, color: "var(--app-text-muted, #64748b)", lineHeight: 1.4 }}>{saveStatus}</div> : null}
-    </aside>
-  );
 }
 
 const footnoteSupStyle = {
@@ -2767,102 +2068,6 @@ export default function LoanInterestSimulatorMockup() {
     setCurrentLoanId(null);
     applyLoanSnapshot(createBlankLoanSnapshot());
   };
-
-  const loginScreen = (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #eef4ff 0%, #f8fafc 240px, #f8fafc 100%)",
-        padding: "24px 16px 48px",
-        color: "var(--app-text, #0f172a)",
-        display: "grid",
-        placeItems: "center",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 460,
-          background: "#ffffff",
-          border: "1px solid #dbe2ea",
-          borderRadius: 20,
-          padding: 24,
-          display: "grid",
-          gap: 18,
-          boxShadow: "0 20px 50px rgba(15, 23, 42, 0.08)",
-        }}
-      >
-        <div style={{ display: "grid", gap: 6 }}>
-          <h1 style={{ margin: 0, fontSize: 30, lineHeight: 1.1 }}>Loan Interest Simulator</h1>
-          <div style={{ color: "#475569", fontSize: 14, lineHeight: 1.5 }}>
-            {cloudStorageEnabled
-              ? "Sign in with Supabase to sync saved loans across browsers and devices."
-              : "Sign in to your local account to access your saved loans, or create a new user to start tracking a different set of loans."}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => { setAuthMode("login"); setAuthError(""); setAuthDisplayName(""); }}
-            style={{
-              border: authMode === "login" ? "1px solid var(--app-accent, #2563eb)" : "1px solid #cbd5e1",
-              background: authMode === "login" ? "var(--app-accent-soft, #dbeafe)" : "#ffffff",
-              color: "#0f172a",
-              borderRadius: 999,
-              padding: "10px 16px",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Login
-          </button>
-          <button
-            type="button"
-            onClick={() => { setAuthMode("create"); setAuthError(""); }}
-            style={{
-              border: authMode === "create" ? "1px solid var(--app-accent, #2563eb)" : "1px solid #cbd5e1",
-              background: authMode === "create" ? "var(--app-accent-soft, #dbeafe)" : "#ffffff",
-              color: "#0f172a",
-              borderRadius: 999,
-              padding: "10px 16px",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Create account
-          </button>
-        </div>
-        <div style={{ display: "grid", gap: 12 }}>
-          {authMode === "create" ? <Field id="auth-display-name" label="Your name" value={authDisplayName} onChange={setAuthDisplayName} /> : null}
-          <Field id="auth-name" label={cloudStorageEnabled ? "Email" : "Username"} value={authName} onChange={setAuthName} />
-          <Field id="auth-password" label="Password" type="password" value={authPassword} onChange={setAuthPassword} />
-          {authError ? (
-            <div style={{ border: "1px solid #fecaca", background: "#fff1f2", color: "#991b1b", borderRadius: 10, padding: "10px 12px", fontSize: 13 }}>
-              {authError}
-            </div>
-          ) : null}
-          <button
-            type="button"
-            onClick={handleAuthSubmit}
-            style={{
-              border: "1px solid var(--app-accent, #2563eb)",
-              background: "var(--app-accent, #2563eb)",
-              color: "#ffffff",
-              borderRadius: 10,
-              padding: "10px 14px",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {authMode === "login" ? "Login" : "Create account"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 
   const helperVisiblePayments = useMemo(() => {
     return [...oneOffPayments]
@@ -3990,7 +3195,22 @@ export default function LoanInterestSimulatorMockup() {
   const headerProgress = headerOriginalDebt > 0 ? Math.max(0, Math.min(100, (1 - headerProjection.startingTotal / headerOriginalDebt) * 100)) : 0;
 
   if (!currentUserId) {
-    return loginScreen;
+    return (
+      <LoginPage
+        authDisplayName={authDisplayName}
+        authError={authError}
+        authMode={authMode}
+        authName={authName}
+        authPassword={authPassword}
+        cloudStorageEnabled={cloudStorageEnabled}
+        onAuthDisplayNameChange={setAuthDisplayName}
+        onAuthErrorChange={setAuthError}
+        onAuthModeChange={setAuthMode}
+        onAuthNameChange={setAuthName}
+        onAuthPasswordChange={setAuthPassword}
+        onSubmit={() => void handleAuthSubmit()}
+      />
+    );
   }
 
   return (

@@ -29,6 +29,16 @@ npm run build
 
 The production output is written to `dist/`.
 
+## Git Pre-Push Checks
+
+Enable the repository's pre-push checks once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook runs `npm test` and `npm run build`; a failing check blocks the push. The hook uses Git for Windows' bundled shell on Windows and the configured npm installation.
+
 ## Data And Privacy
 
 Without Supabase environment variables, LoanSim is fully client-side. Saved loans and demo user profiles are stored in the browser with `localStorage` under `loan-sim:*` keys.

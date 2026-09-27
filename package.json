@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test",
+    "typecheck": "tsc -b --pretty false",
     "preview": "vite preview"
   },
   "dependencies": {

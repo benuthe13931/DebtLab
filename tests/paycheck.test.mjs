@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ninjaTraderSemiMonthly } from "./fixtures/paycheck/ninjatrader-semi-monthly.mjs";
 import {
   estimateAnnualFederalTax,
   estimatePaycheck,
@@ -63,8 +64,8 @@ test("salary federal withholding matches the annualized 2026 single-filer table"
   assert.equal(result.taxableFederalWages, 2_884.62);
   assert.equal(result.federalIncomeTax, 295);
   assert.equal(result.socialSecurityTax, 178.85);
-  assert.equal(result.medicareTax, 43.27);
-  assert.equal(result.netPay, 2_367.5);
+  assert.equal(result.medicareTax, 41.83);
+  assert.equal(result.netPay, 2_368.94);
 });
 
 test("annualized withholding remains consistent across pay frequencies", () => {
@@ -86,6 +87,39 @@ test("W-4 step 2, credits, deductions, other income, and extra withholding affec
   assert.equal(estimatePaycheck(paycheckInputs({ w4Deductions: 12_000 })).federalIncomeTax, 206.92);
   assert.equal(estimatePaycheck(paycheckInputs({ w4OtherIncome: 12_000 })).federalIncomeTax, 396.54);
   assert.equal(estimatePaycheck(paycheckInputs({ w4AdditionalWithholding: 25 })).federalIncomeTax, 320);
+});
+
+test("NinjaTrader semi-monthly paystub matches with Step 2 withholding unchecked", () => {
+  const { actual, inputs, tolerance } = ninjaTraderSemiMonthly;
+  const result = estimatePaycheck({ ...inputs, w4Step2Checked: false });
+
+  for (const field of [
+    "grossPay",
+    "taxableFederalWages",
+    "benefitDeductions",
+    "hsa",
+    "traditional401k",
+    "roth401k",
+    "federalIncomeTax",
+    "socialSecurityTax",
+    "medicareTax",
+    "stateWithholding",
+    "postTaxBenefits",
+    "netPay",
+  ]) {
+    assert.ok(
+      Math.abs(result[field] - actual[field]) <= tolerance,
+      `${field}: expected ${actual[field]}, received ${result[field]}`,
+    );
+  }
+});
+
+test("NinjaTrader paystub reflects the higher federal withholding when Step 2 is checked", () => {
+  const { deployedWithStepTwo, inputs, tolerance } = ninjaTraderSemiMonthly;
+  const result = estimatePaycheck({ ...inputs, w4Step2Checked: true });
+
+  assert.ok(Math.abs(result.federalIncomeTax - deployedWithStepTwo.federalIncomeTax) <= tolerance);
+  assert.ok(Math.abs(result.netPay - deployedWithStepTwo.netPay) <= tolerance);
 });
 
 test("pre-tax benefits and traditional 401(k) affect the appropriate wage bases", () => {
