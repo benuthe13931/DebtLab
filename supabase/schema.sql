@@ -17,6 +17,13 @@ create table if not exists public.saved_loans (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.paycheck_plans (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  data jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists saved_loans_user_id_idx on public.saved_loans(user_id);
 
 create or replace function public.set_updated_at()
@@ -64,8 +71,14 @@ create trigger saved_loans_set_updated_at
 before update on public.saved_loans
 for each row execute function public.set_updated_at();
 
+drop trigger if exists paycheck_plans_set_updated_at on public.paycheck_plans;
+create trigger paycheck_plans_set_updated_at
+before update on public.paycheck_plans
+for each row execute function public.set_updated_at();
+
 alter table public.profiles enable row level security;
 alter table public.saved_loans enable row level security;
+alter table public.paycheck_plans enable row level security;
 
 drop policy if exists "Users can read own profile" on public.profiles;
 create policy "Users can read own profile"
@@ -124,3 +137,39 @@ on public.saved_loans
 for delete
 to authenticated
 using ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can read own paycheck plan" on public.paycheck_plans;
+create policy "Users can read own paycheck plan"
+on public.paycheck_plans
+for select
+to authenticated
+using ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can create own paycheck plan" on public.paycheck_plans;
+create policy "Users can create own paycheck plan"
+on public.paycheck_plans
+for insert
+to authenticated
+with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can update own paycheck plan" on public.paycheck_plans;
+create policy "Users can update own paycheck plan"
+on public.paycheck_plans
+for update
+to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can delete own paycheck plan" on public.paycheck_plans;
+create policy "Users can delete own paycheck plan"
+on public.paycheck_plans
+for delete
+to authenticated
+using ((select auth.uid()) = user_id);
+
+-- RLS policies filter rows, but the Data API roles also need table privileges
+-- before PostgreSQL will evaluate those policies.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on table public.profiles to authenticated;
+grant select, insert, update, delete on table public.saved_loans to authenticated;
+grant select, insert, update, delete on table public.paycheck_plans to authenticated;

@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { PaycheckPage } from "./PaycheckPage";
 import {
   cloudStorageEnabled,
   cloudStorageStatus,
@@ -1879,7 +1880,7 @@ export default function LoanInterestSimulatorMockup() {
   const [authName, setAuthName] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
-  const [activePage, setActivePage] = useState<"simulator" | "profile">("simulator");
+  const [activePage, setActivePage] = useState<"simulator" | "paycheck" | "profile">("simulator");
   const [profileDraftName, setProfileDraftName] = useState("");
   const [profileDraftEmail, setProfileDraftEmail] = useState("");
   const [profileStatus, setProfileStatus] = useState("");
@@ -3936,11 +3937,11 @@ export default function LoanInterestSimulatorMockup() {
             }}
           />
           <div>
-            <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.1 }}>Loan Interest Simulator</h1>
+            <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.1 }}>DebtLab</h1>
             <p style={{ margin: "8px 0 0", color: currentTheme.textMuted, maxWidth: 800 }}>
-              Run the core loan calculation assuming the minimum payment is made on the recurring
-              due date, or switch to the separate payment-history helper when you want to compare
-              against real statements.
+              {activePage === "paycheck"
+                ? "Estimate take-home pay now and after future benefit or retirement changes."
+                : "Model loan payments, compare real payment history, and test future payoff choices."}
             </p>
           </div>
         </header>
@@ -3997,6 +3998,22 @@ export default function LoanInterestSimulatorMockup() {
             </button>
             <button
               type="button"
+              onClick={() => setActivePage("paycheck")}
+              style={{
+                border: activePage === "paycheck" ? `1px solid ${currentTheme.accent}` : `1px solid ${currentTheme.cardBorder}`,
+                background: activePage === "paycheck" ? currentTheme.accentSoft : currentTheme.surface,
+                color: currentTheme.text,
+                borderRadius: 999,
+                padding: "10px 16px",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Paycheck Estimate
+            </button>
+            <button
+              type="button"
               onClick={() => setActivePage("profile")}
               style={{
                 border: activePage === "profile" ? `1px solid ${currentTheme.accent}` : `1px solid ${currentTheme.cardBorder}`,
@@ -4048,6 +4065,7 @@ export default function LoanInterestSimulatorMockup() {
             >
                 Delete user
               </button>
+            {activePage === "simulator" ? <>
             <select
               value={currentLoanId ?? "__new__"}
               onChange={(event) => {
@@ -4109,6 +4127,7 @@ export default function LoanInterestSimulatorMockup() {
               </button>
             ) : null}
             {saveStatus ? <div style={{ fontSize: 12, color: currentTheme.textMuted }}>{saveStatus}</div> : null}
+            </> : null}
           </div>
         </div>
         {activePage === "profile" ? (
@@ -4370,6 +4389,8 @@ export default function LoanInterestSimulatorMockup() {
               </section>
             </section>
           </main>
+        ) : activePage === "paycheck" ? (
+          <PaycheckPage userId={currentUserId} />
         ) : (
         <main
           style={{

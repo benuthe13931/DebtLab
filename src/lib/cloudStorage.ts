@@ -221,3 +221,20 @@ export const saveCloudLoans = async (userId: string, loans: CloudSavedLoanRecord
   const upsertResult = await client.from("saved_loans").upsert(rows);
   if (upsertResult.error) throw upsertResult.error;
 };
+
+export const loadCloudPaycheckPlan = async <T>(userId: string): Promise<T | null> => {
+  const client = assertClient();
+  const { data, error } = await client
+    .from("paycheck_plans")
+    .select("data")
+    .eq("user_id", userId)
+    .maybeSingle<{ data: T }>();
+  if (error) throw error;
+  return data?.data ?? null;
+};
+
+export const saveCloudPaycheckPlan = async (userId: string, data: unknown) => {
+  const client = assertClient();
+  const { error } = await client.from("paycheck_plans").upsert({ data, user_id: userId });
+  if (error) throw error;
+};
