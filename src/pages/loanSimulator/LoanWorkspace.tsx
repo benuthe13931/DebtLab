@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { LoanSimulatorRuntime } from "../../types/loanSimulatorRuntime";
 import { LoanDetailsTab } from "./LoanDetailsTab";
 import { LoanTransactionsTab } from "./LoanTransactionsTab";
@@ -50,6 +49,7 @@ export function LoanWorkspace({ runtime }: { runtime: LoanSimulatorRuntime }) {
         </main>
   );
 }
+
 
 
 
