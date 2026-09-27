@@ -47,6 +47,8 @@ export function Field({ commitMode = "change", id, label, onChange, type = "text
             : undefined
         }
         style={{
+          width: "100%",
+          boxSizing: "border-box",
           border: "1px solid var(--app-border-strong, #cbd5e1)",
           borderRadius: 10,
           padding: "10px 12px",

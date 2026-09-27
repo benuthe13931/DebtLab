@@ -3705,7 +3705,7 @@ export default function LoanInterestSimulatorMockup() {
                   <DateField label="Calculate current balance through" id="target-date" value={targetDate} minDate={targetDateMinValue} onChange={setTargetDate} />
                 </FormSection> : <FormSection title="Card account cycle" helper="Credit cards use a statement cycle and due date rather than an amortization timeline.">
                   <DateField label="Statement date" id="card-statement-date" value={cardStatementDate} onChange={setCardStatementDate} />
-                  <label style={{ display: "grid", gap: 6, maxWidth: 150 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Due day</span><input id="card-due-day" inputMode="numeric" value={dueDay} onChange={(event) => setDueDay(event.target.value.replace(/[^0-9]/g, "").slice(0, 2))} style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }} /></label>
+                  <label style={{ display: "grid", gap: 6, width: 96 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Due day</span><input id="card-due-day" inputMode="numeric" value={dueDay} onChange={(event) => setDueDay(event.target.value.replace(/[^0-9]/g, "").slice(0, 2))} style={{ width: 96, boxSizing: "border-box", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }} /></label>
                 </FormSection>}
                 <FormSection title="Recurring payment rules">
                   <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 10, minWidth: 0 }}>
