@@ -37,44 +37,7 @@ import type {
 } from "../types/loans";
 import { parseCurrency } from "../utils/currency";
 import { compareDateOnly, monthValue, parseMonthInput, startOfDay } from "../utils/date";
-
-function formatCurrency(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number.isFinite(n) ? n : 0);
-}
-
-function formatPercent(n: number): string {
-  return `${n.toFixed(2)}%`;
-}
-
-function formatMonthYear(date: Date | null): string {
-  if (!date) return "-";
-  return date.toLocaleString("en-US", { month: "short", year: "numeric" });
-}
-
-function formatDurationToPayoff(date: Date | null, fromDate: Date | null): string {
-  if (!date || !fromDate || date <= fromDate) return "-";
-  const totalMonths =
-    (date.getFullYear() - fromDate.getFullYear()) * 12 + (date.getMonth() - fromDate.getMonth());
-  const years = Math.floor(totalMonths / 12);
-  const months = totalMonths % 12;
-  const yearLabel = years > 0 ? `${years} year${years === 1 ? "" : "s"}` : "";
-  const monthLabel = months > 0 ? `${months} month${months === 1 ? "" : "s"}` : "";
-  return [yearLabel, monthLabel].filter(Boolean).join(", ") || "Less than 1 month";
-}
-
-function formatTimeShaved(deltaMonths: number): string {
-  if (deltaMonths === 0) return "None";
-  const absoluteMonths = Math.abs(deltaMonths);
-  const years = Math.floor(absoluteMonths / 12);
-  const months = absoluteMonths % 12;
-  const yearLabel = years > 0 ? `${years} year${years === 1 ? "" : "s"}` : "";
-  const monthLabel = months > 0 ? `${months} month${months === 1 ? "" : "s"}` : "";
-  const value = [yearLabel, monthLabel].filter(Boolean).join(", ") || "0 months";
-  return deltaMonths > 0 ? value : `${value} added`;
-}
+import { formatCurrency, formatDurationToPayoff, formatMonthYear, formatPauseRange, formatPercent, formatTimeShaved, getDifferenceLabel } from "../utils/formatting";
 
 type SerializedPaymentEvent = Omit<PaymentEvent, "date"> & {
   date: string;
@@ -214,26 +177,9 @@ type ThemeDefinition = {
   textMuted: string;
 };
 
-function formatPauseRange(pausePeriod: PausePeriod): string {
-  return `${formatMonth(pausePeriod.startMonth)} to ${formatMonth(pausePeriod.endMonth)}`;
-}
-
-
 function pausePeriodsOverlap(left: PausePeriod, right: PausePeriod): boolean {
   return monthValue(left.startMonth) <= monthValue(right.endMonth) &&
     monthValue(right.startMonth) <= monthValue(left.endMonth);
-}
-
-function getDifferenceLabel(params: {
-  negative: string;
-  positive: string;
-  value: number;
-  zero?: string;
-}) {
-  const { negative, positive, value, zero } = params;
-  if (value < 0) return negative;
-  if (value > 0) return positive;
-  return zero ?? positive;
 }
 
 const SAVED_LOANS_STORAGE_KEY = "loan-sim:saved-loans";
