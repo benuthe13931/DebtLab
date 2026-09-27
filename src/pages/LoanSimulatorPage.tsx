@@ -48,6 +48,7 @@ import { parseCurrency } from "../utils/currency";
 import { compareDateOnly, monthValue, parseMonthInput, startOfDay } from "../utils/date";
 import { formatCurrency, formatDurationToPayoff, formatMonthYear, formatPauseRange, formatPercent, formatTimeShaved, getDifferenceLabel } from "../utils/formatting";
 import { THEME_DEFINITIONS, type ThemeId } from "../constants/theme";
+import { createBlankLoanSnapshot } from "../constants/loanDefaults";
 import type { UserProfile } from "../types/profile";
 
 function pausePeriodsOverlap(left: PausePeriod, right: PausePeriod): boolean {
@@ -234,80 +235,6 @@ export default function LoanInterestSimulatorMockup() {
     document.addEventListener("mousedown", closeMenu);
     return () => document.removeEventListener("mousedown", closeMenu);
   }, [profileMenuOpen]);
-
-  const createBlankLoanSnapshot = (): LoanSnapshot => ({
-    accountType: "loan",
-    cardMinimumMode: "percent",
-    cardMinimumPercent: "2",
-    cardMinimumFloor: "25",
-    postPromoMinimumMode: "percent",
-    postPromoMinimumPercent: "2",
-    postPromoMinimumFloor: "25",
-    postPromoFixedMinimum: "",
-    cardStatementDate: "",
-    creditCardTransactions: [],
-    activeView: "assumed",
-    additionalMonthlyPayment: "0",
-    aprPercent: "",
-    dayCountBasis: "actual-year",
-    deletedHelperRowIds: [],
-    dueDay: "1",
-    editingPaymentAmount: "",
-    editingPaymentDate: "",
-    editingPaymentId: "",
-    editingPaymentLabel: "",
-    firstPaymentDate: "",
-    helperActionError: "",
-    helperAdjustmentAmount: "",
-    helperAdjustmentDueDay: "",
-    helperAdjustmentFromMonth: "",
-    helperAdjustmentToMonth: "",
-    helperBulkMode: "pause",
-    helperDueDayChanges: [],
-    helperPauseFromMonth: "",
-    helperPauseMode: "accrues",
-    helperPausePeriods: [],
-    helperPauseToMonth: "",
-    helperPaymentAmountOverrides: {},
-    helperRecurringChanges: [],
-    loanName: "",
-    minimumPayment: "",
-    moveWeekend: false,
-    newOneOffAmount: "",
-    newOneOffDate: "",
-    newOneOffLabel: "Extra payment",
-    newWhatIfAmount: "",
-    newWhatIfDate: "",
-    newWhatIfLabel: "Anticipated one-time payment",
-    oneOffPayments: [],
-    promoType: "none",
-    promoEndDate: "",
-    paymentDateOverrides: {},
-    paymentLabelOverrides: {},
-    roundDailyInterest: false,
-    showAmortization: false,
-    showComparisonDetails: false,
-    showFutureDetails: false,
-    showHelperAmortization: false,
-    showHistoricalDetails: false,
-    showLifetimeDetails: false,
-    startingPrincipal: "",
-    startingPrincipalDate: "",
-    targetDate: todayValue,
-    whatIfActionError: "",
-    whatIfAdjustmentAmount: "",
-    whatIfAdjustmentDate: "",
-    whatIfAdjustmentDueDay: "",
-    whatIfAdjustmentEndDate: "",
-    whatIfDueDayChanges: [],
-    whatIfEntryMode: "one-time",
-    whatIfPauseFromMonth: "",
-    whatIfPauseMode: "accrues",
-    whatIfPausePeriods: [],
-    whatIfPauseToMonth: "",
-    whatIfPayments: [],
-    whatIfRecurringChanges: [],
-  });
 
   const serializePaymentEvent = (payment: PaymentEvent): SerializedPaymentEvent => ({
     ...payment,
@@ -510,7 +437,7 @@ export default function LoanInterestSimulatorMockup() {
         if (parsed.length === 0) {
           setSavedLoans([]);
           setCurrentLoanId(null);
-          applyLoanSnapshot(createBlankLoanSnapshot());
+          applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
           return;
         }
 
@@ -521,7 +448,7 @@ export default function LoanInterestSimulatorMockup() {
         setSaveStatus(error instanceof Error ? error.message : "Could not load cloud loans.");
         setSavedLoans([]);
         setCurrentLoanId(null);
-        applyLoanSnapshot(createBlankLoanSnapshot());
+        applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
       }
       return;
     }
@@ -531,14 +458,14 @@ export default function LoanInterestSimulatorMockup() {
       if (!raw) {
         setSavedLoans([]);
         setCurrentLoanId(null);
-        applyLoanSnapshot(createBlankLoanSnapshot());
+        applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
         return;
       }
       const parsed = JSON.parse(raw) as SavedLoanRecord[];
       if (!Array.isArray(parsed) || parsed.length === 0) {
         setSavedLoans([]);
         setCurrentLoanId(null);
-        applyLoanSnapshot(createBlankLoanSnapshot());
+        applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
         return;
       }
       setSavedLoans(parsed);
@@ -547,7 +474,7 @@ export default function LoanInterestSimulatorMockup() {
     } catch {
       setSavedLoans([]);
       setCurrentLoanId(null);
-      applyLoanSnapshot(createBlankLoanSnapshot());
+      applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
     }
   };
 
@@ -572,7 +499,7 @@ export default function LoanInterestSimulatorMockup() {
             setCurrentUserId(null);
             setSavedLoans([]);
             setCurrentLoanId(null);
-            applyLoanSnapshot(createBlankLoanSnapshot());
+            applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
             return;
           }
 
@@ -586,7 +513,7 @@ export default function LoanInterestSimulatorMockup() {
           setCurrentUserId(null);
           setSavedLoans([]);
           setCurrentLoanId(null);
-          applyLoanSnapshot(createBlankLoanSnapshot());
+          applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
         }
       })();
 
@@ -623,7 +550,7 @@ export default function LoanInterestSimulatorMockup() {
         setCurrentUserId(null);
         setSavedLoans([]);
         setCurrentLoanId(null);
-        applyLoanSnapshot(createBlankLoanSnapshot());
+        applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
         return;
       }
 
@@ -635,7 +562,7 @@ export default function LoanInterestSimulatorMockup() {
       setCurrentUserId(null);
       setSavedLoans([]);
       setCurrentLoanId(null);
-      applyLoanSnapshot(createBlankLoanSnapshot());
+      applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
     }
   }, []);
 
@@ -719,7 +646,7 @@ export default function LoanInterestSimulatorMockup() {
         }
         const normalized = normalizeProfile(profile as UserProfile);
         setUserProfiles([normalized]);
-        applyLoanSnapshot(createBlankLoanSnapshot());
+        applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
         setSavedLoans([]);
         setCurrentLoanId(null);
         loginUser(normalized.id, normalized.name);
@@ -746,7 +673,7 @@ export default function LoanInterestSimulatorMockup() {
       const nextProfiles = [...userProfiles, nextProfile];
       persistUserProfiles(nextProfiles);
       setUserProfiles(nextProfiles);
-      applyLoanSnapshot(createBlankLoanSnapshot());
+      applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
       setSavedLoans([]);
       setCurrentLoanId(null);
       loginUser(nextProfile.id, nextProfile.name);
@@ -774,7 +701,7 @@ export default function LoanInterestSimulatorMockup() {
     setSaveStatus("");
     setAuthPassword("");
     setAuthError("");
-    applyLoanSnapshot(createBlankLoanSnapshot());
+    applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
   };
 
   const deleteCurrentUserProfile = async () => {
@@ -808,7 +735,7 @@ export default function LoanInterestSimulatorMockup() {
     setAuthPassword("");
     setAuthError("");
     setDeleteAccountConfirmOpen(false);
-    applyLoanSnapshot(createBlankLoanSnapshot());
+    applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
   };
 
   useEffect(() => {
@@ -942,7 +869,7 @@ export default function LoanInterestSimulatorMockup() {
   const startNewLoan = (type: "loan" | "credit-card" = "loan") => {
     setCurrentLoanId(null);
     setSaveStatus("");
-    applyLoanSnapshot(createBlankLoanSnapshot());
+    applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
     setAccountType(type);
     setPromoType("none");
     setPromoEndDate("");
@@ -979,7 +906,7 @@ export default function LoanInterestSimulatorMockup() {
     }
 
     setCurrentLoanId(null);
-    applyLoanSnapshot(createBlankLoanSnapshot());
+    applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
   };
 
   const helperVisiblePayments = useMemo(() => {
