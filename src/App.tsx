@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { PaycheckPage } from "./PaycheckPage";
+import { PaycheckPage } from "./pages/PaycheckPage";
 import { DateField as SharedDateField } from "./components/DateField";
 import { LoanSidebar } from "./components/loans/LoanSidebar";
 import { CurrencyField, CurrencyInput } from "./components/ui/CurrencyField";
