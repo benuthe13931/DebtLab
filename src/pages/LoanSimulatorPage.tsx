@@ -6,6 +6,7 @@ import { DateField, DatePickerInput, MonthYearField } from "../components/ui/dat
 import { FormSection, SummaryGroupLabel, SummaryValue } from "../components/ui/summary";
 import { LoanSidebar } from "../components/loans/LoanSidebar";
 import { CreditCardActivityEditor } from "../components/loans/CreditCardActivityEditor";
+import { LabelWithNotes, formatPrincipalShare, getEventTypeCode, getEventTypeTitle, getTableRowStyle } from "../components/loans/schedulePresentation";
 import { CurrencyField, CurrencyInput } from "../components/ui/CurrencyField";
 import { Field } from "../components/ui/Field";
 import { LoginPage } from "./LoginPage";
@@ -66,77 +67,6 @@ const normalizeProfile = (profile: UserProfile): UserProfile => ({
   ...profile,
   themeId: asThemeId(profile.themeId),
 });
-
-const footnoteSupStyle = {
-  fontSize: 10,
-  lineHeight: 1,
-  verticalAlign: "super" as const,
-  marginLeft: 1,
-};
-
-function LabelWithNotes({ text, notes }: { text: string; notes?: number[] }) {
-  return (
-    <span>
-      {text}
-      {notes?.map((note) => (
-        <sup key={`${text}-${note}`} style={footnoteSupStyle}>
-          {note}
-        </sup>
-      ))}
-    </span>
-  );
-}
-
-function formatPrincipalShare(share: number | null): string {
-  if (share === null || !Number.isFinite(share)) {
-    return "-";
-  }
-  return `${Math.max(0, share * 100).toFixed(0)}%`;
-}
-
-function getEventTypeCode(eventType: ScheduleRow["eventType"]): string {
-  switch (eventType) {
-    case "scheduled":
-      return "S";
-    case "extra":
-      return "E";
-    case "history":
-      return "H";
-    case "paused":
-      return "P";
-    case "snapshot":
-      return "A";
-    default:
-      return "-";
-  }
-}
-
-function getEventTypeTitle(eventType: ScheduleRow["eventType"]): string {
-  switch (eventType) {
-    case "scheduled":
-      return "Scheduled";
-    case "extra":
-      return "Extra";
-    case "history":
-      return "Historical";
-    case "paused":
-      return "Paused";
-    case "snapshot":
-      return "As-of snapshot";
-    default:
-      return eventType;
-  }
-}
-
-function getTableRowStyle(row: ScheduleRow) {
-  if (row.eventType === "paused") {
-    return { background: "var(--app-row-paused, #fff7ed)" };
-  }
-  if (row.negativeAmortization) {
-    return { background: "var(--app-row-negative, #fffbeb)" };
-  }
-  return undefined;
-}
 
 export default function LoanInterestSimulatorMockup() {
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
