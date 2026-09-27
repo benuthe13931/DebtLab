@@ -8,6 +8,7 @@ export type PaycheckInputs = {
   hsaPerPaycheck: number;
   medicalPerPaycheck: number;
   otherPreTaxPerPaycheck: number;
+  postTaxBenefitsPerPaycheck: number;
   payFrequency: PayFrequency;
   roth401kPercent: number;
   stateWithholdingPerPaycheck: number;
@@ -28,6 +29,7 @@ export type PaycheckResult = {
   hsa: number;
   medicareTax: number;
   netPay: number;
+  postTaxBenefits: number;
   periodsPerYear: number;
   roth401k: number;
   socialSecurityTax: number;
@@ -163,6 +165,7 @@ export function estimatePaycheck(inputs: PaycheckInputs): PaycheckResult {
     annualFicaWages * 0.0145 / periodsPerYear +
     Math.max(0, annualFicaWages - 200_000) * 0.009 / periodsPerYear;
   const stateWithholding = nonNegative(inputs.stateWithholdingPerPaycheck);
+  const postTaxBenefits = nonNegative(inputs.postTaxBenefitsPerPaycheck);
   const netPay = nonNegative(
     grossPay -
       benefitDeductions -
@@ -171,7 +174,8 @@ export function estimatePaycheck(inputs: PaycheckInputs): PaycheckResult {
       federalIncomeTax -
       socialSecurityTax -
       medicareTax -
-      stateWithholding,
+      stateWithholding -
+      postTaxBenefits,
   );
 
   return {
@@ -182,6 +186,7 @@ export function estimatePaycheck(inputs: PaycheckInputs): PaycheckResult {
     hsa: roundCents(hsa),
     medicareTax: roundCents(medicareTax),
     netPay: roundCents(netPay),
+    postTaxBenefits: roundCents(postTaxBenefits),
     periodsPerYear,
     roth401k: roundCents(roth401k),
     socialSecurityTax: roundCents(socialSecurityTax),

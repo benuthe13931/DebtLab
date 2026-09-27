@@ -1732,6 +1732,47 @@ function FormSection({
   );
 }
 
+function LoanSidebar({
+  collapsed,
+  currentLoanId,
+  loanName,
+  loans,
+  onAdd,
+  onCollapse,
+  onSelect,
+  saveStatus,
+}: {
+  collapsed: boolean;
+  currentLoanId: string | null;
+  loanName: string;
+  loans: SavedLoanRecord[];
+  onAdd: () => void;
+  onCollapse: () => void;
+  onSelect: (loanId: string) => void;
+  saveStatus: string;
+}) {
+  return (
+    <aside style={{ position: "sticky", top: 24, minHeight: "calc(100vh - 48px)", padding: collapsed ? 10 : 16, display: "grid", gridTemplateRows: "auto auto 1fr auto", alignContent: "start", gap: 14, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 18, background: "var(--app-surface, #fff)", boxShadow: "0 10px 30px rgba(15, 23, 42, 0.07)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "space-between", gap: 8 }}>
+        {!collapsed ? <strong style={{ fontSize: 16 }}>Your loans</strong> : null}
+        <button type="button" aria-label={collapsed ? "Expand loan sidebar" : "Collapse loan sidebar"} onClick={onCollapse} style={{ width: 36, height: 36, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 10, background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", cursor: "pointer", fontWeight: 800 }}>{collapsed ? ">" : "<"}</button>
+      </div>
+      <button type="button" onClick={onAdd} title="Add loan" style={{ display: "flex", justifyContent: collapsed ? "center" : "flex-start", alignItems: "center", gap: 9, width: "100%", border: "1px solid var(--app-accent, #2563eb)", borderRadius: 11, padding: collapsed ? "10px 0" : "10px 12px", background: "var(--app-accent, #2563eb)", color: "#fff", fontWeight: 750, cursor: "pointer" }}>
+        <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>{!collapsed ? "Add loan" : null}
+      </button>
+      <div style={{ display: "grid", gap: 7, alignContent: "start" }}>
+        {!currentLoanId && loanName ? <div style={{ padding: collapsed ? "10px 0" : "10px 12px", textAlign: collapsed ? "center" : "left", borderRadius: 10, background: "var(--app-accent-soft, #dbeafe)", color: "var(--app-text, #0f172a)", fontSize: 13, fontWeight: 700 }} title="Unsaved loan">{collapsed ? "*" : `${loanName || "New loan"} (draft)`}</div> : null}
+        {loans.map((loan) => {
+          const selected = loan.id === currentLoanId;
+          return <button key={loan.id} type="button" title={loan.name} onClick={() => onSelect(loan.id)} style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: collapsed ? "center" : "left", border: selected ? "1px solid var(--app-accent, #2563eb)" : "1px solid transparent", borderRadius: 10, padding: collapsed ? "10px 0" : "10px 12px", background: selected ? "var(--app-accent-soft, #dbeafe)" : "transparent", color: "var(--app-text, #0f172a)", fontWeight: selected ? 750 : 600, cursor: "pointer" }}>{collapsed ? loan.name.charAt(0).toUpperCase() : loan.name}</button>;
+        })}
+        {loans.length === 0 && !collapsed ? <div style={{ padding: "12px 4px", color: "var(--app-text-muted, #64748b)", fontSize: 12, lineHeight: 1.5 }}>Add your first loan to begin building a payoff plan.</div> : null}
+      </div>
+      {!collapsed && saveStatus ? <div style={{ fontSize: 12, color: "var(--app-text-muted, #64748b)", lineHeight: 1.4 }}>{saveStatus}</div> : null}
+    </aside>
+  );
+}
+
 const footnoteSupStyle = {
   fontSize: 10,
   lineHeight: 1,
@@ -1882,7 +1923,7 @@ export default function LoanInterestSimulatorMockup() {
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [activePage, setActivePage] = useState<"simulator" | "paycheck" | "profile">("simulator");
-  const [activeLoanTab, setActiveLoanTab] = useState<"details" | "assumed" | "history" | "whatif">("details");
+  const [activeLoanTab, setActiveLoanTab] = useState<"details" | "history" | "whatif">("details");
   const [loanSidebarCollapsed, setLoanSidebarCollapsed] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [deleteAccountConfirmOpen, setDeleteAccountConfirmOpen] = useState(false);
@@ -3647,7 +3688,7 @@ export default function LoanInterestSimulatorMockup() {
       return;
     }
     if (compareDateOnly(date, todayDate) > 0) {
-      setHelperActionError("Payment History Helper dates cannot be in the future.");
+      setHelperActionError("Payment dates cannot be in the future.");
       return;
     }
 
@@ -3683,7 +3724,7 @@ export default function LoanInterestSimulatorMockup() {
       return;
     }
     if (compareDateOnly(parsed, todayDate) > 0) {
-      setHelperActionError("Payment History Helper dates cannot be in the future.");
+      setHelperActionError("Payment dates cannot be in the future.");
       return;
     }
 
@@ -3954,9 +3995,22 @@ export default function LoanInterestSimulatorMockup() {
           maxWidth: 1760,
           margin: "0 auto",
           display: "grid",
-          gap: 24,
+          gap: 20,
+          gridTemplateColumns: loanSidebarCollapsed ? "72px minmax(0, 1fr)" : "260px minmax(0, 1fr)",
+          alignItems: "start",
         }}
       >
+        <LoanSidebar
+          collapsed={loanSidebarCollapsed}
+          currentLoanId={currentLoanId}
+          loanName={loanName}
+          loans={savedLoans}
+          onAdd={() => { startNewLoan(); setActivePage("simulator"); }}
+          onCollapse={() => setLoanSidebarCollapsed((collapsed) => !collapsed)}
+          onSelect={(loanId) => { loadSavedLoan(loanId); setActivePage("simulator"); }}
+          saveStatus={saveStatus}
+        />
+        <div style={{ display: "grid", gap: 24, minWidth: 0 }}>
         <header style={{ display: "flex", gap: 20, alignItems: "center", justifyContent: "space-between", textAlign: "left" }}>
           <button type="button" onClick={() => { setActivePage("simulator"); setActiveLoanTab("details"); setActiveView("assumed"); }} style={{ display: "flex", gap: 14, alignItems: "center", border: 0, padding: 0, background: "transparent", color: currentTheme.text, cursor: "pointer", textAlign: "left" }}>
             <span aria-hidden="true" style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${currentTheme.accent}, ${currentTheme.accent})`, boxShadow: currentTheme.cardShadow, flexShrink: 0 }} />
@@ -4004,11 +4058,14 @@ export default function LoanInterestSimulatorMockup() {
                 gap: 24,
               }}
             >
-              <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 16 }}>
+                <div style={{ display: "grid", gap: 8 }}>
                 <h2 style={{ margin: 0, fontSize: 28 }}>Profile</h2>
                 <p style={{ margin: 0, color: currentTheme.textMuted, lineHeight: 1.6, maxWidth: 760 }}>
                   Keep your account details up to date, pick a theme for the simulator, and use a one-time reset code emailed to you when you want to change your password.
                 </p>
+                </div>
+                <button type="button" aria-label="Close profile" onClick={() => { setActivePage("simulator"); setActiveLoanTab("details"); setActiveView("assumed"); }} style={{ width: 38, height: 38, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, background: currentTheme.surface, color: currentTheme.text, fontSize: 22, cursor: "pointer" }}>×</button>
               </div>
 
               {profileStatus ? (
@@ -4253,39 +4310,19 @@ export default function LoanInterestSimulatorMockup() {
             </section>
           </main>
         ) : activePage === "paycheck" ? (
-          <PaycheckPage userId={currentUserId} />
+          <PaycheckPage userId={currentUserId} onClose={() => { setActivePage("simulator"); setActiveLoanTab("details"); setActiveView("assumed"); }} />
         ) : (
-        <main style={{ display: "grid", gap: 20, gridTemplateColumns: loanSidebarCollapsed ? "72px minmax(0, 1fr)" : "260px minmax(0, 1fr)", alignItems: "start" }}>
-          <aside style={{ position: "sticky", top: 16, minHeight: 420, padding: loanSidebarCollapsed ? 10 : 16, display: "grid", alignContent: "start", gap: 14, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 18, background: currentTheme.surface, boxShadow: currentTheme.cardShadow }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: loanSidebarCollapsed ? "center" : "space-between", gap: 8 }}>
-              {!loanSidebarCollapsed ? <strong style={{ fontSize: 16 }}>Your loans</strong> : null}
-              <button type="button" aria-label={loanSidebarCollapsed ? "Expand loan sidebar" : "Collapse loan sidebar"} onClick={() => setLoanSidebarCollapsed((collapsed) => !collapsed)} style={{ width: 36, height: 36, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, background: currentTheme.surfaceMuted, color: currentTheme.text, cursor: "pointer", fontWeight: 800 }}>{loanSidebarCollapsed ? "›" : "‹"}</button>
-            </div>
-            <button type="button" onClick={startNewLoan} title="Add loan" style={{ display: "flex", justifyContent: loanSidebarCollapsed ? "center" : "flex-start", alignItems: "center", gap: 9, width: "100%", border: `1px solid ${currentTheme.accent}`, borderRadius: 11, padding: loanSidebarCollapsed ? "10px 0" : "10px 12px", background: currentTheme.accent, color: "#fff", fontWeight: 750, cursor: "pointer" }}>
-              <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>{!loanSidebarCollapsed ? "Add loan" : null}
-            </button>
-            <div style={{ display: "grid", gap: 7 }}>
-              {!currentLoanId && loanName ? <div style={{ padding: loanSidebarCollapsed ? "10px 0" : "10px 12px", textAlign: loanSidebarCollapsed ? "center" : "left", borderRadius: 10, background: currentTheme.accentSoft, color: currentTheme.text, fontSize: 13, fontWeight: 700 }} title="Unsaved loan">{loanSidebarCollapsed ? "•" : `${loanName || "New loan"} (draft)`}</div> : null}
-              {savedLoans.map((loan) => {
-                const selected = loan.id === currentLoanId;
-                return <button key={loan.id} type="button" title={loan.name} onClick={() => loadSavedLoan(loan.id)} style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: loanSidebarCollapsed ? "center" : "left", border: selected ? `1px solid ${currentTheme.accent}` : "1px solid transparent", borderRadius: 10, padding: loanSidebarCollapsed ? "10px 0" : "10px 12px", background: selected ? currentTheme.accentSoft : "transparent", color: currentTheme.text, fontWeight: selected ? 750 : 600, cursor: "pointer" }}>{loanSidebarCollapsed ? loan.name.charAt(0).toUpperCase() : loan.name}</button>;
-              })}
-              {savedLoans.length === 0 && !loanSidebarCollapsed ? <div style={{ padding: "12px 4px", color: currentTheme.textMuted, fontSize: 12, lineHeight: 1.5 }}>Add your first loan to begin building a payoff plan.</div> : null}
-            </div>
-            {!loanSidebarCollapsed && saveStatus ? <div style={{ fontSize: 12, color: currentTheme.textMuted, lineHeight: 1.4 }}>{saveStatus}</div> : null}
-          </aside>
-          <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
-            <nav aria-label="Loan workspace" style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: 6, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 14, background: currentTheme.surface, boxShadow: currentTheme.cardShadow }}>
+        <main style={{ display: "grid", gap: 0, minWidth: 0 }}>
+            <nav aria-label="Loan workspace" style={{ display: "flex", alignItems: "end", borderBottom: `1px solid ${currentTheme.cardBorder}` }}>
               {([
                 ["details", "Loan Details"],
-                ["assumed", "Assumed Schedule"],
-                ["history", "Payment History Helper"],
+                ["history", "Payoff Schedule"],
                 ["whatif", "What If"],
               ] as const).map(([tab, label]) => (
-                <button key={tab} type="button" onClick={() => { setActiveLoanTab(tab); if (tab !== "details") setActiveView(tab); else setActiveView("assumed"); }} style={{ border: activeLoanTab === tab ? `1px solid ${currentTheme.accent}` : "1px solid transparent", borderRadius: 10, padding: "10px 14px", background: activeLoanTab === tab ? currentTheme.accentSoft : "transparent", color: currentTheme.text, fontWeight: 700, cursor: "pointer" }}>{label}</button>
+                <button key={tab} type="button" onClick={() => { setActiveLoanTab(tab); if (tab !== "details") setActiveView(tab); else setActiveView("assumed"); }} style={{ flex: "1 1 0", marginBottom: -1, border: `1px solid ${activeLoanTab === tab ? currentTheme.cardBorder : "transparent"}`, borderBottomColor: activeLoanTab === tab ? currentTheme.surface : currentTheme.cardBorder, borderRadius: "14px 14px 0 0", padding: "13px 16px", background: activeLoanTab === tab ? currentTheme.surface : currentTheme.surfaceMuted, color: currentTheme.text, fontWeight: 700, cursor: "pointer" }}>{label}</button>
               ))}
             </nav>
-            <div style={{ display: "grid", gap: 24, gridTemplateColumns: activeLoanTab === "assumed" ? "minmax(0, 1fr)" : "360px minmax(0, 1fr)", alignItems: "start", minWidth: 0 }}>
+            <div style={{ display: "grid", gap: 24, gridTemplateColumns: "360px minmax(0, 1fr)", alignItems: "start", minWidth: 0, paddingTop: 20 }}>
           <section
             style={{
               background: currentTheme.surface,
@@ -4293,7 +4330,7 @@ export default function LoanInterestSimulatorMockup() {
               borderRadius: 18,
               padding: 20,
               textAlign: "left",
-              display: activeLoanTab === "assumed" ? "none" : "grid",
+              display: "grid",
               gap: 16,
               boxShadow: currentTheme.cardShadow,
             }}
@@ -4302,7 +4339,7 @@ export default function LoanInterestSimulatorMockup() {
               {activeLoanTab === "details"
                 ? "Loan Details"
                 : activeLoanTab === "history"
-                  ? "Payment History Helper"
+                   ? "Payoff Schedule"
                   : "What If"}
             </h2>
             {activeLoanTab === "details" ? (
@@ -4369,8 +4406,8 @@ export default function LoanInterestSimulatorMockup() {
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: currentTheme.text }}>Add one-time payment</div>
                     <div style={{ fontSize: 12, color: currentTheme.textMuted, lineHeight: 1.4, marginTop: 4 }}>
-                      Insert a single payment by date and amount. The helper will drop it into the
-                      recurring schedule and recalculate from there.
+                      Insert a payment by date and amount. The payoff schedule will place it in the
+                      correct order and recalculate from there.
                     </div>
                   </div>
                   <DateField
@@ -5355,7 +5392,7 @@ export default function LoanInterestSimulatorMockup() {
               </div>
             </div>
 
-            {activeView === "assumed" ? (
+            {activeLoanTab === "details" ? null : activeView === "assumed" ? (
               <>
                 {assumedResult.errors.length > 0 ? (
                   <div style={{ display: "grid", gap: 10 }}>
@@ -5570,9 +5607,8 @@ export default function LoanInterestSimulatorMockup() {
                     </div>
                   </div>
                   <p style={{ margin: "0 0 16px", color: currentTheme.textMuted, fontSize: 14 }}>
-                    This is the source-of-truth table for the helper. You can edit payment dates and
-                    amounts directly here or delete rows to remove assumed payments, and the helper
-                    will recalculate to the bottom `As of target date` row.
+                    Edit payment dates and amounts directly here, add extra payments, or delete rows.
+                    The payoff schedule recalculates through the `As of target date` row.
                   </p>
                   {(showHelperAmortization ? helperProjection.rows : historyResult.rows).length === 0 ? (
                     <div
@@ -5966,7 +6002,7 @@ export default function LoanInterestSimulatorMockup() {
                         color: currentTheme.textMuted,
                       }}
                     >
-                      Add loan inputs first, then use the helper if needed, and this tab will project
+                      Add loan inputs first, then add payments in Payoff Schedule if needed. This tab will project
                       forward from the current balance date.
                     </div>
                   ) : (
@@ -6038,7 +6074,6 @@ export default function LoanInterestSimulatorMockup() {
             )}
           </section>
             </div>
-          </div>
         </main>
         )}
         {deleteAccountConfirmOpen ? (
@@ -6055,6 +6090,7 @@ export default function LoanInterestSimulatorMockup() {
             </div>
           </div>
         ) : null}
+        </div>
       </div>
     </div>
   );
