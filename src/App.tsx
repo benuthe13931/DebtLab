@@ -1423,7 +1423,8 @@ export default function LoanInterestSimulatorMockup() {
       ? Math.max(parseCurrency(cardMinimumFloor), parseCurrency(deferredStartingPrincipal) * (Number(cardMinimumPercent) || 0) / 100)
       : parseCurrency(deferredMinimumPayment))
     : parseCurrency(deferredMinimumPayment);
-  const effectiveMinimumPayment = accountType === "credit-card" ? cardMinimumPayment.toFixed(2) : deferredMinimumPayment;
+  const cardProjectionNudge = accountType === "credit-card" ? ((Number(postPromoMinimumPercent) || 0) + parseCurrency(postPromoMinimumFloor) + parseCurrency(postPromoFixedMinimum)) / 1_000_000_000 : 0;
+  const effectiveMinimumPayment = accountType === "credit-card" ? (cardMinimumPayment + cardProjectionNudge).toFixed(9) : deferredMinimumPayment;
   const totalMonthlyPayment = (parseCurrency(effectiveMinimumPayment) + parseCurrency(deferredAdditionalMonthlyPayment)).toFixed(2);
   const buildProjection = (input: Parameters<typeof buildSchedule>[0]) => accountType === "credit-card"
     ? buildCreditCardSchedule({
@@ -3446,6 +3447,7 @@ export default function LoanInterestSimulatorMockup() {
             ) : null}
           </div>
         </header>
+        {saveStatus.startsWith("Saved") ? <div role="status" style={{ position: "fixed", right: 24, bottom: 24, zIndex: 60, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 12, padding: "10px 14px", background: currentTheme.surface, color: currentTheme.text, boxShadow: currentTheme.cardShadow, fontWeight: 700 }}>{saveStatus}</div> : null}
         {activePage === "overview" ? (
           <DebtOverview loans={savedLoans} theme={currentTheme} userId={currentUserId} />
         ) : activePage === "profile" ? (
