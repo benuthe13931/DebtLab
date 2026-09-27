@@ -47,6 +47,7 @@ import { parseCurrency } from "../utils/currency";
 import { compareDateOnly, monthValue, parseMonthInput, startOfDay } from "../utils/date";
 import { formatCurrency, formatDurationToPayoff, formatMonthYear, formatPauseRange, formatPercent, formatTimeShaved, getDifferenceLabel } from "../utils/formatting";
 import { THEME_DEFINITIONS, type ThemeId } from "../constants/theme";
+import type { UserProfile } from "../types/profile";
 
 function pausePeriodsOverlap(left: PausePeriod, right: PausePeriod): boolean {
   return monthValue(left.startMonth) <= monthValue(right.endMonth) && monthValue(right.startMonth) <= monthValue(left.endMonth);
@@ -55,17 +56,6 @@ function pausePeriodsOverlap(left: PausePeriod, right: PausePeriod): boolean {
 const SAVED_LOANS_STORAGE_KEY = "loan-sim:saved-loans";
 const USER_PROFILES_STORAGE_KEY = "loan-sim:user-profiles";
 const CURRENT_USER_STORAGE_KEY = "loan-sim:current-user";
-
-type UserProfile = {
-  displayName: string;
-  email: string;
-  id: string;
-  name: string;
-  password: string;
-  passwordResetCode?: string;
-  passwordResetIssuedAt?: string;
-  themeId: ThemeId;
-};
 
 const asThemeId = (themeId: string | undefined): ThemeId =>
   themeId === "forest" || themeId === "sunset" || themeId === "midnight" || themeId === "rose" || themeId === "slate"
