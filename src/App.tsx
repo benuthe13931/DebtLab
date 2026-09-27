@@ -12,6 +12,7 @@ import { accrueInterest } from "./calculations/loans/accrueInterest";
 import { addMonths, clampToMonth, formatMonth, parseDate, toDateInputValue } from "./calculations/loans/dateUtils";
 import { buildSchedule, getNextScheduledPaymentDate } from "./calculations/loans/schedule";
 import { buildCreditCardSchedule } from "./calculations/cards/buildCreditCardSchedule";
+import { estimateMonthlyIncome, loadBudgetBills, saveBudgetBills, totalBudgetBills, type BudgetBill } from "./services/budget";
 import {
   cloudStorageEnabled,
   cloudStorageStatus,
@@ -1238,13 +1239,11 @@ function DebtOverview({ loans, theme, userId }: { loans: SavedLoanRecord[]; them
 }
 
 function BudgetPage({ loans, theme, userId, onClose }: { loans: SavedLoanRecord[]; theme: ThemeDefinition; userId: string; onClose: () => void }) {
-  const key = `loan-sim:budget:${userId}`;
-  const [bills, setBills] = useState<Array<{ id: string; name: string; category: string; amount: number }>>(() => { try { return JSON.parse(localStorage.getItem(key) ?? "[]"); } catch { return []; } });
+  const [bills, setBills] = useState<BudgetBill[]>(() => loadBudgetBills(userId));
   const [name, setName] = useState(""); const [category, setCategory] = useState("Utilities"); const [amount, setAmount] = useState(0);
-  const [income, setIncome] = useState(0);
-  useEffect(() => { localStorage.setItem(key, JSON.stringify(bills)); }, [key, bills]);
-  useEffect(() => { try { const saved = JSON.parse(localStorage.getItem(`loan-sim:paycheck-scenarios:${userId}`) ?? "null") as { scenarios?: Array<{ incomeType?: string; inputs?: { annualSalary?: number }; hourlyRate?: number; hoursPerWeek?: number }> } | null; setIncome((saved?.scenarios ?? []).reduce((sum, s) => sum + (s.incomeType === "hourly" ? (s.hourlyRate ?? 0) * (s.hoursPerWeek ?? 0) * 52 / 12 : (s.inputs?.annualSalary ?? 0) / 12), 0)); } catch { setIncome(0); } }, [userId]);
-  const totalBills = bills.reduce((sum, bill) => sum + bill.amount, 0); const minimums = loans.reduce((sum, loan) => sum + estimateSavedAccountMinimum(loan.data), 0);
+  const income = estimateMonthlyIncome(userId);
+  useEffect(() => { saveBudgetBills(userId, bills); }, [userId, bills]);
+  const totalBills = totalBudgetBills(bills); const minimums = loans.reduce((sum, loan) => sum + estimateSavedAccountMinimum(loan.data), 0);
   return <main style={{ display: "grid", gap: 20 }}><section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 22, boxShadow: theme.cardShadow, display: "grid", gap: 18 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><div><h2 style={{ margin: 0 }}>Bills & budget</h2><p style={{ margin: "6px 0 0", color: theme.textMuted }}>Track recurring bills and see what remains after bills and minimum debt payments.</p></div><button type="button" onClick={onClose} aria-label="Close bills and budget" style={{ width: 38, height: 38, border: `1px solid ${theme.cardBorder}`, borderRadius: 10, background: theme.surface, color: theme.text, fontSize: 22, cursor: "pointer" }}>×</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12 }}><SummaryValue label="Estimated monthly income" value={income ? formatCurrency(income) : "Add a pay estimate"} /><SummaryValue label="Monthly bills" value={formatCurrency(totalBills)} /><SummaryValue label="After bills and minimums" value={income ? formatCurrency(income - totalBills - minimums) : "—"} /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Bill name" style={{ padding: 10, borderRadius: 9, border: `1px solid ${theme.cardBorder}` }} /><input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" style={{ padding: 10, borderRadius: 9, border: `1px solid ${theme.cardBorder}` }} /><input type="number" value={amount || ""} onChange={(e) => setAmount(Number(e.target.value) || 0)} placeholder="Monthly amount" style={{ padding: 10, borderRadius: 9, border: `1px solid ${theme.cardBorder}` }} /><button type="button" onClick={() => { if (!name.trim() || amount <= 0) return; setBills((current) => [...current, { id: crypto.randomUUID(), name: name.trim(), category: category.trim() || "Other", amount }]); setName(""); setAmount(0); }} style={{ border: 0, borderRadius: 9, background: theme.accent, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Add bill</button></div><div style={{ display: "grid", gap: 7 }}>{bills.map((bill) => <div key={bill.id} style={{ display: "flex", justifyContent: "space-between", padding: "9px 11px", borderRadius: 9, background: theme.surfaceMuted }}><span>{bill.name} <small style={{ color: theme.textMuted }}>({bill.category})</small></span><span><strong>{formatCurrency(bill.amount)}</strong><button type="button" onClick={() => setBills((current) => current.filter((item) => item.id !== bill.id))} style={{ marginLeft: 8, border: 0, background: "transparent", color: "#b91c1c", cursor: "pointer" }}>×</button></span></div>)}</div></section></main>;
 }
 
