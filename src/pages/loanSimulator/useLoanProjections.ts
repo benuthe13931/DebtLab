@@ -1,8 +1,9 @@
 // @ts-nocheck
 import { useMemo } from "react";
 import { accrueInterest } from "../../calculations/loans/accrueInterest";
-import { parseDate, toDateInputValue } from "../../calculations/loans/dateUtils";
+import { clampToMonth, parseDate, toDateInputValue } from "../../calculations/loans/dateUtils";
 import { compareDateOnly } from "../../utils/date";
+import { parseCurrency } from "../../utils/currency";
 import { formatDurationToPayoff, formatTimeShaved } from "../../utils/formatting";
 
 export function useLoanProjections(context: Record<string, any>) {
