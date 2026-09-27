@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { PaycheckPage } from "./PaycheckPage";
+import { DateField as SharedDateField } from "./components/DateField";
 import {
   cloudStorageEnabled,
   cloudStorageStatus,
@@ -916,6 +917,34 @@ function Field({ commitMode = "change", id, label, onChange, type = "text", valu
   );
 }
 
+function CurrencyInput({ compact = false, id, onChange, value }: { compact?: boolean; id?: string; onChange: (value: string) => void; value: string }) {
+  const formatValue = (nextValue: string) => nextValue.trim() === "" ? "" : parseCurrency(nextValue).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const [draftValue, setDraftValue] = useState(() => formatValue(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraftValue(formatValue(value));
+  }, [focused, value]);
+
+  const commit = () => {
+    const formatted = formatValue(draftValue);
+    setFocused(false);
+    setDraftValue(formatted);
+    onChange(formatted);
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", width: "100%", minWidth: 0, border: "1px solid var(--app-border-strong, #cbd5e1)", borderRadius: compact ? 8 : 10, background: "var(--app-input-bg, #fff)" }}>
+      <span aria-hidden="true" style={{ paddingLeft: compact ? 7 : 11, color: "var(--app-text-muted, #64748b)", fontSize: compact ? 12 : 15 }}>$</span>
+      <input id={id} type="text" inputMode="decimal" value={draftValue} onFocus={() => setFocused(true)} onChange={(event) => setDraftValue(event.target.value.replace(/[^0-9.,]/g, ""))} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") commit(); }} style={{ width: "100%", minWidth: 0, border: 0, outline: 0, padding: compact ? "6px 6px" : "10px 10px", borderRadius: compact ? 8 : 10, fontSize: compact ? 12 : 15, background: "transparent", color: "var(--app-text, #0f172a)" }} />
+    </div>
+  );
+}
+
+function CurrencyField({ id, label, onChange, value }: { id: string; label: string; onChange: (value: string) => void; value: string }) {
+  return <label htmlFor={id} style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 14, fontWeight: 600, color: "var(--app-heading, #334155)" }}>{label}</span><CurrencyInput id={id} value={value} onChange={onChange} /></label>;
+}
+
 function DatePickerInput({
   compact = false,
   id,
@@ -940,7 +969,7 @@ function DatePickerInput({
   const [draftValue, setDraftValue] = useState(value);
   const draftParsed = parseDate(draftValue);
   const parsed = draftParsed ?? committedParsed;
-  const [viewDate, setViewDate] = useState(parsed ?? today);
+  const [viewDate, setViewDate] = useState(parsed ?? parsedMinDate ?? today);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -948,8 +977,8 @@ function DatePickerInput({
   }, [value]);
 
   useEffect(() => {
-    setViewDate(parsed ?? today);
-  }, [parsed?.getFullYear(), parsed?.getMonth(), parsed?.getDate()]);
+    setViewDate(parseDate(value) ?? parseDate(minDate ?? "") ?? startOfDay(new Date()));
+  }, [minDate, value]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1357,12 +1386,7 @@ function DateField({
   onChange: (value: string) => void;
   value: string;
 }) {
-  return (
-    <label htmlFor={id} style={{ display: "grid", gap: 6 }}>
-      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--app-heading, #334155)" }}>{label}</span>
-      <DatePickerInput id={id} maxDate={maxDate} minDate={minDate} value={value} onChange={onChange} />
-    </label>
-  );
+  return <SharedDateField id={id} label={label} maxDate={maxDate} minDate={minDate} value={value} onChange={onChange} />;
 }
 
 function MonthYearField({
@@ -1752,22 +1776,22 @@ function LoanSidebar({
   saveStatus: string;
 }) {
   return (
-    <aside style={{ position: "sticky", top: 24, minHeight: "calc(100vh - 48px)", padding: collapsed ? 10 : 16, display: "grid", gridTemplateRows: "auto auto 1fr auto", alignContent: "start", gap: 14, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 18, background: "var(--app-surface, #fff)", boxShadow: "0 10px 30px rgba(15, 23, 42, 0.07)" }}>
+    <aside style={{ position: "sticky", top: 24, minHeight: "calc(100vh - 48px)", padding: collapsed ? 6 : 16, display: "grid", gridTemplateRows: collapsed ? "auto" : "auto auto 1fr auto", alignContent: "start", gap: 14, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: collapsed ? 10 : 18, background: "var(--app-surface, #fff)", boxShadow: "0 10px 30px rgba(15, 23, 42, 0.07)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "space-between", gap: 8 }}>
         {!collapsed ? <strong style={{ fontSize: 16 }}>Your loans</strong> : null}
-        <button type="button" aria-label={collapsed ? "Expand loan sidebar" : "Collapse loan sidebar"} onClick={onCollapse} style={{ width: 36, height: 36, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 10, background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", cursor: "pointer", fontWeight: 800 }}>{collapsed ? ">" : "<"}</button>
+        <button type="button" aria-label={collapsed ? "Expand loan sidebar" : "Collapse loan sidebar"} onClick={onCollapse} style={{ width: collapsed ? 30 : 36, height: collapsed ? 30 : 36, display: "grid", placeItems: "center", border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 8, background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", cursor: "pointer" }}><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor"/><path d="M6 3v10" stroke="currentColor"/><path d={collapsed ? "m9 6 2 2-2 2" : "m11 6-2 2 2 2"} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
       </div>
-      <button type="button" onClick={onAdd} title="Add loan" style={{ display: "flex", justifyContent: collapsed ? "center" : "flex-start", alignItems: "center", gap: 9, width: "100%", border: "1px solid var(--app-accent, #2563eb)", borderRadius: 11, padding: collapsed ? "10px 0" : "10px 12px", background: "var(--app-accent, #2563eb)", color: "#fff", fontWeight: 750, cursor: "pointer" }}>
-        <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>{!collapsed ? "Add loan" : null}
-      </button>
-      <div style={{ display: "grid", gap: 7, alignContent: "start" }}>
+      {!collapsed ? <button type="button" onClick={onAdd} title="Add loan" style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: 9, width: "100%", border: "1px solid var(--app-accent, #2563eb)", borderRadius: 11, padding: "10px 12px", background: "var(--app-accent, #2563eb)", color: "#fff", fontWeight: 750, cursor: "pointer" }}>
+        <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>Add loan
+      </button> : null}
+      {!collapsed ? <div style={{ display: "grid", gap: 7, alignContent: "start" }}>
         {!currentLoanId && loanName ? <div style={{ padding: collapsed ? "10px 0" : "10px 12px", textAlign: collapsed ? "center" : "left", borderRadius: 10, background: "var(--app-accent-soft, #dbeafe)", color: "var(--app-text, #0f172a)", fontSize: 13, fontWeight: 700 }} title="Unsaved loan">{collapsed ? "*" : `${loanName || "New loan"} (draft)`}</div> : null}
         {loans.map((loan) => {
           const selected = loan.id === currentLoanId;
           return <button key={loan.id} type="button" title={loan.name} onClick={() => onSelect(loan.id)} style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: collapsed ? "center" : "left", border: selected ? "1px solid var(--app-accent, #2563eb)" : "1px solid transparent", borderRadius: 10, padding: collapsed ? "10px 0" : "10px 12px", background: selected ? "var(--app-accent-soft, #dbeafe)" : "transparent", color: "var(--app-text, #0f172a)", fontWeight: selected ? 750 : 600, cursor: "pointer" }}>{collapsed ? loan.name.charAt(0).toUpperCase() : loan.name}</button>;
         })}
         {loans.length === 0 && !collapsed ? <div style={{ padding: "12px 4px", color: "var(--app-text-muted, #64748b)", fontSize: 12, lineHeight: 1.5 }}>Add your first loan to begin building a payoff plan.</div> : null}
-      </div>
+      </div> : null}
       {!collapsed && saveStatus ? <div style={{ fontSize: 12, color: "var(--app-text-muted, #64748b)", lineHeight: 1.4 }}>{saveStatus}</div> : null}
     </aside>
   );
@@ -3996,7 +4020,7 @@ export default function LoanInterestSimulatorMockup() {
           margin: "0 auto",
           display: "grid",
           gap: 20,
-          gridTemplateColumns: loanSidebarCollapsed ? "72px minmax(0, 1fr)" : "260px minmax(0, 1fr)",
+          gridTemplateColumns: loanSidebarCollapsed ? "44px minmax(0, 1fr)" : "260px minmax(0, 1fr)",
           alignItems: "start",
         }}
       >
@@ -4130,7 +4154,7 @@ export default function LoanInterestSimulatorMockup() {
                     />
                     <Field
                       id="profile-email"
-                      label="Email for password resets"
+                      label="Email"
                       value={profileDraftEmail}
                       onChange={setProfileDraftEmail}
                     />
@@ -4174,7 +4198,7 @@ export default function LoanInterestSimulatorMockup() {
                   <div style={{ display: "grid", gap: 4 }}>
                     <h3 style={{ margin: 0, fontSize: 20 }}>Security</h3>
                       <div style={{ color: currentTheme.textMuted, fontSize: 14 }}>
-                      Changing your password requires a one-time reset code tied to your email address.
+                      We will email a secure password-reset link to the address on your account.
                     </div>
                   </div>
                   <button
@@ -4194,12 +4218,9 @@ export default function LoanInterestSimulatorMockup() {
                       appearance: "none",
                     }}
                   >
-                    Send reset email
+                    Email password-reset link
                   </button>
-                  <div style={{ fontSize: 12, color: currentTheme.textMuted, lineHeight: 1.5 }}>
-                    Local demo note: the one-time reset code is shown in-app after you send it, since this app does not have a real mail service yet.
-                  </div>
-                  <div style={{ display: "grid", gap: 14 }}>
+                  {!cloudStorageEnabled ? <div style={{ display: "grid", gap: 14 }}>
                     <Field
                       id="password-reset-code"
                       label="One-time reset code"
@@ -4237,7 +4258,7 @@ export default function LoanInterestSimulatorMockup() {
                     >
                       Change password
                     </button>
-                  </div>
+                  </div> : null}
                 </div>
               </div>
 
@@ -4319,7 +4340,7 @@ export default function LoanInterestSimulatorMockup() {
                 ["history", "Payoff Schedule"],
                 ["whatif", "What If"],
               ] as const).map(([tab, label]) => (
-                <button key={tab} type="button" onClick={() => { setActiveLoanTab(tab); if (tab !== "details") setActiveView(tab); else setActiveView("assumed"); }} style={{ flex: "1 1 0", marginBottom: -1, border: `1px solid ${activeLoanTab === tab ? currentTheme.cardBorder : "transparent"}`, borderBottomColor: activeLoanTab === tab ? currentTheme.surface : currentTheme.cardBorder, borderRadius: "14px 14px 0 0", padding: "13px 16px", background: activeLoanTab === tab ? currentTheme.surface : currentTheme.surfaceMuted, color: currentTheme.text, fontWeight: 700, cursor: "pointer" }}>{label}</button>
+                <button key={tab} type="button" onClick={() => { setActiveLoanTab(tab); if (tab !== "details") setActiveView(tab); else setActiveView("assumed"); }} style={{ flex: "1 1 0", marginBottom: -1, border: `1px solid ${currentTheme.cardBorder}`, borderBottomColor: activeLoanTab === tab ? currentTheme.surface : currentTheme.cardBorder, borderRadius: "14px 14px 0 0", padding: "13px 16px", background: activeLoanTab === tab ? currentTheme.surface : currentTheme.surfaceMuted, color: currentTheme.text, fontWeight: 700, cursor: "pointer" }}>{label}</button>
               ))}
             </nav>
             <div style={{ display: "grid", gap: 24, gridTemplateColumns: "360px minmax(0, 1fr)", alignItems: "start", minWidth: 0, paddingTop: 20 }}>
@@ -4346,17 +4367,17 @@ export default function LoanInterestSimulatorMockup() {
               <>
                 <FormSection title="Loan basics">
                   <Field label="Loan name" id="loan-name" value={loanName} onChange={setLoanName} />
-                  <Field label="Starting principal" id="starting-principal" value={startingPrincipal} onChange={setStartingPrincipal} />
+                  <CurrencyField label="Starting principal" id="starting-principal" value={startingPrincipal} onChange={setStartingPrincipal} />
                   <Field label="APR (%)" id="apr" value={aprPercent} onChange={setAprPercent} />
                 </FormSection>
                 <FormSection title="Timeline">
                   <DateField label="Starting principal date" id="starting-date" value={startingPrincipalDate} onChange={setStartingPrincipalDate} />
-                  <DateField label="First scheduled payment date" id="first-payment-date" value={firstPaymentDate} onChange={setFirstPaymentDate} />
+                  <DateField label="First scheduled payment date" id="first-payment-date" value={firstPaymentDate} minDate={startingPrincipalDate} onChange={setFirstPaymentDate} />
                   <DateField label="Calculate current balance through" id="target-date" value={targetDate} minDate={targetDateMinValue} onChange={setTargetDate} />
                 </FormSection>
                 <FormSection title="Recurring payment rules">
-                  <Field label="Minimum payment" id="minimum-payment" value={minimumPayment} onChange={setMinimumPayment} />
-                  <Field label="Monthly extra payment" id="additional-monthly-payment" value={additionalMonthlyPayment} onChange={setAdditionalMonthlyPayment} />
+                  <CurrencyField label="Minimum payment" id="minimum-payment" value={minimumPayment} onChange={setMinimumPayment} />
+                  <CurrencyField label="Monthly extra payment" id="additional-monthly-payment" value={additionalMonthlyPayment} onChange={setAdditionalMonthlyPayment} />
                   <Field label="Recurring due day" id="due-day" value={dueDay} onChange={setDueDay} />
                 </FormSection>
                 <FormSection title="Accrual / calendar behavior" helper="These rules control how scheduled dates and daily interest are calculated.">
@@ -4417,7 +4438,7 @@ export default function LoanInterestSimulatorMockup() {
                     value={newOneOffDate}
                     onChange={setNewOneOffDate}
                   />
-                  <Field
+                  <CurrencyField
                     id="new-one-off-amount"
                     label="Payment amount"
                     value={newOneOffAmount}
@@ -4545,7 +4566,7 @@ export default function LoanInterestSimulatorMockup() {
                       onChange={setHelperAdjustmentDueDay}
                     />
                   ) : (
-                    <Field
+                    <CurrencyField
                       id="helper-adjustment-amount"
                       label={helperBulkMode === "minimum" ? "New minimum payment" : "New monthly extra payment"}
                       value={helperAdjustmentAmount}
@@ -4780,7 +4801,7 @@ export default function LoanInterestSimulatorMockup() {
                         value={newWhatIfDate}
                         onChange={setNewWhatIfDate}
                       />
-                      <Field
+                      <CurrencyField
                         id="new-what-if-amount"
                         label="Payment amount"
                         value={newWhatIfAmount}
@@ -5582,7 +5603,7 @@ export default function LoanInterestSimulatorMockup() {
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 8 }}>
-                    <h2 style={{ margin: 0, fontSize: 22 }}>Historical Replay To Current Date</h2>
+                    <h2 style={{ margin: 0, fontSize: 22 }}>Payment timeline</h2>
                     <div style={{ display: "grid", gap: 8, justifyItems: "start", maxWidth: 320 }}>
                       <button
                         type="button"
@@ -5622,19 +5643,19 @@ export default function LoanInterestSimulatorMockup() {
                       Add loan inputs and payment history to see the replay.
                     </div>
                   ) : (
-                    <div style={{ overflowX: "auto" }}>
+                    <div style={{ width: "100%", minWidth: 0 }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                         <colgroup>
-                          <col style={{ width: "5%" }} />
-                          <col style={{ width: "14%" }} />
-                          <col style={{ width: "10%" }} />
-                          <col style={{ width: "10%" }} />
-                          <col style={{ width: "10%" }} />
-                          <col style={{ width: "10%" }} />
+                          <col style={{ width: "4%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "9%" }} />
                           <col style={{ width: "8%" }} />
-                          <col style={{ width: "11%" }} />
-                          <col style={{ width: "11%" }} />
-                          <col style={{ width: "11%" }} />
+                          <col style={{ width: "9%" }} />
+                          <col style={{ width: "9%" }} />
+                          <col style={{ width: "7%" }} />
+                          <col style={{ width: "10%" }} />
+                          <col style={{ width: "10%" }} />
+                          <col style={{ width: "12%" }} />
                           <col style={{ width: "10%" }} />
                         </colgroup>
                         <thead>
@@ -5643,9 +5664,9 @@ export default function LoanInterestSimulatorMockup() {
                               <th
                                 key={heading}
                                 style={{
-                                  padding: "10px 8px",
+                                  padding: "9px 5px",
                                   borderBottom: `1px solid ${currentTheme.cardBorder}`,
-                                  fontSize: 14,
+                                  fontSize: 12,
                                   textAlign: "left",
                                   color: currentTheme.textMuted,
                                 }}
@@ -5670,7 +5691,8 @@ export default function LoanInterestSimulatorMockup() {
                                       borderRadius: 8,
                                       padding: "6px 8px",
                                       fontSize: 12,
-                                      width: 140,
+                                      width: "100%",
+                                      minWidth: 0,
                                     }}
                                   />
                                 ) : (
@@ -5679,7 +5701,7 @@ export default function LoanInterestSimulatorMockup() {
                               </td>
                               <td style={{ padding: "12px 10px", borderBottom: "1px solid #eef2f7", fontSize: 14, whiteSpace: "nowrap" }}>
                                 {editingPaymentId === row.rowId ? (
-                                  <div style={{ width: 118 }}>
+                                  <div style={{ width: "100%", minWidth: 0 }}>
                                     <DatePickerInput
                                       compact
                                       maxDate={todayValue}
@@ -5693,18 +5715,7 @@ export default function LoanInterestSimulatorMockup() {
                               </td>
                               <td style={{ padding: "12px 10px", borderBottom: "1px solid #eef2f7", fontSize: 14 }}>
                                 {editingPaymentId === row.rowId ? (
-                                  <input
-                                    type="text"
-                                    value={editingPaymentAmount}
-                                    onChange={(event) => setEditingPaymentAmount(event.target.value)}
-                                    style={{
-                                      border: "1px solid #cbd5e1",
-                                      borderRadius: 8,
-                                      padding: "6px 8px",
-                                      fontSize: 12,
-                                      width: 74,
-                                    }}
-                                  />
+                                  <CurrencyInput compact value={editingPaymentAmount} onChange={setEditingPaymentAmount} />
                                 ) : (
                                   formatCurrency(row.paymentAmount)
                                 )}
@@ -5727,11 +5738,11 @@ export default function LoanInterestSimulatorMockup() {
                               <td style={{ padding: "12px 10px", borderBottom: "1px solid #eef2f7", fontSize: 14 }}>{formatCurrency(row.endingPrincipal)}</td>
                               <td style={{ padding: "12px 10px", borderBottom: "1px solid #eef2f7", fontSize: 14 }}>{formatCurrency(row.endingInterest)}</td>
                               <td style={{ padding: "12px 10px", borderBottom: "1px solid #eef2f7", fontSize: 14 }}>{formatCurrency(row.endingPrincipal + row.endingInterest)}</td>
-                              <td style={{ padding: "12px 10px", borderBottom: "1px solid #eef2f7", fontSize: 14, minWidth: 138 }}>
+                              <td style={{ padding: "8px 5px", borderBottom: `1px solid ${currentTheme.cardBorder}`, fontSize: 12 }}>
                                 {row.eventType === "snapshot" || row.eventType === "paused" || showHelperAmortization ? (
                                   <span style={{ color: currentTheme.textMuted, fontSize: 12 }}>Auto</span>
                                 ) : editingPaymentId === row.rowId ? (
-                                  <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
+                                  <div style={{ display: "grid", gap: 5 }}>
                                     <button
                                       type="button"
                                       onClick={saveEditedPayment}
@@ -5766,7 +5777,7 @@ export default function LoanInterestSimulatorMockup() {
                                     </button>
                                   </div>
                                 ) : (
-                                  <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
+                                  <div style={{ display: "grid", gap: 5 }}>
                                     <button
                                       type="button"
                                       onClick={() => startEditingReplayRow(row)}
@@ -5788,8 +5799,8 @@ export default function LoanInterestSimulatorMockup() {
                                       onClick={() => deleteHelperRow(row.rowId)}
                                       style={{
                                         border: "1px solid #ef4444",
-                                        background: "#ffffff",
-                                        color: "#b91c1c",
+                                        background: "var(--app-danger-bg, #fff1f2)",
+                                        color: "var(--app-danger-text, #b91c1c)",
                                         borderRadius: 8,
                                         padding: "6px 10px",
                                         fontSize: 12,
