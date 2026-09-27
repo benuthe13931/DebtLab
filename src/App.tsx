@@ -1303,7 +1303,7 @@ export default function LoanInterestSimulatorMockup() {
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [activePage, setActivePage] = useState<"overview" | "simulator" | "paycheck" | "profile">("simulator");
-  const [activeLoanTab, setActiveLoanTab] = useState<"details" | "history" | "whatif">("details");
+  const [activeLoanTab, setActiveLoanTab] = useState<"details" | "transactions" | "history" | "whatif">("details");
   const [loanSidebarCollapsed, setLoanSidebarCollapsed] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [deleteAccountConfirmOpen, setDeleteAccountConfirmOpen] = useState(false);
@@ -3660,14 +3660,15 @@ export default function LoanInterestSimulatorMockup() {
         <main style={{ display: "grid", gap: 0, minWidth: 0 }}>
             <nav aria-label="Loan workspace" style={{ display: "flex", alignItems: "end", borderBottom: `1px solid ${currentTheme.cardBorder}` }}>
               {([
-                ["details", "Loan Details"],
+                ["details", accountType === "credit-card" ? "Card Details" : "Loan Details"],
+                ...(accountType === "credit-card" ? [["transactions", "Transactions"]] : []),
                 ["history", "Payoff Schedule"],
                 ["whatif", "What If"],
               ] as const).map(([tab, label]) => (
-                <button key={tab} type="button" onClick={() => { setActiveLoanTab(tab); if (tab !== "details") setActiveView(tab); else setActiveView("assumed"); }} style={{ flex: "1 1 0", marginBottom: -1, border: `1px solid ${currentTheme.cardBorder}`, borderBottomColor: activeLoanTab === tab ? currentTheme.surface : currentTheme.cardBorder, borderRadius: "14px 14px 0 0", padding: "13px 16px", background: activeLoanTab === tab ? currentTheme.surface : currentTheme.surfaceMuted, color: currentTheme.text, fontWeight: 700, cursor: "pointer" }}>{label}</button>
+                <button key={tab} type="button" onClick={() => { setActiveLoanTab(tab as "details" | "transactions" | "history" | "whatif"); if (tab === "history" || tab === "whatif") setActiveView(tab); else setActiveView("assumed"); }} style={{ flex: "1 1 0", marginBottom: -1, border: `1px solid ${currentTheme.cardBorder}`, borderBottomColor: activeLoanTab === tab ? currentTheme.surface : currentTheme.cardBorder, borderRadius: "14px 14px 0 0", padding: "13px 16px", background: activeLoanTab === tab ? currentTheme.surface : currentTheme.surfaceMuted, color: currentTheme.text, fontWeight: 700, cursor: "pointer" }}>{label}</button>
               ))}
             </nav>
-            <div style={{ display: "grid", gap: 24, gridTemplateColumns: activeLoanTab === "details" ? "minmax(0, 1fr)" : "360px minmax(0, 1fr)", alignItems: "start", minWidth: 0, paddingTop: 20 }}>
+            <div style={{ display: "grid", gap: 24, gridTemplateColumns: activeLoanTab === "details" || activeLoanTab === "transactions" ? "minmax(0, 1fr)" : "360px minmax(0, 1fr)", alignItems: "start", minWidth: 0, paddingTop: 20 }}>
           <section
             style={{
               background: currentTheme.surface,
@@ -3681,9 +3682,11 @@ export default function LoanInterestSimulatorMockup() {
               boxShadow: currentTheme.cardShadow,
             }}
           >
-            <h2 style={{ margin: 0, fontSize: 22, gridColumn: activeLoanTab === "details" ? "1 / -1" : undefined }}>
+            <h2 style={{ margin: 0, fontSize: 22, gridColumn: activeLoanTab === "details" || activeLoanTab === "transactions" ? "1 / -1" : undefined }}>
               {activeLoanTab === "details"
                 ? accountType === "credit-card" ? "Credit Card Details" : "Loan Details"
+                : activeLoanTab === "transactions"
+                  ? "Transactions"
                 : activeLoanTab === "history"
                    ? "Payoff Schedule"
                   : "What If"}
@@ -3702,11 +3705,11 @@ export default function LoanInterestSimulatorMockup() {
                   <DateField label="Calculate current balance through" id="target-date" value={targetDate} minDate={targetDateMinValue} onChange={setTargetDate} />
                 </FormSection> : <FormSection title="Card account cycle" helper="Credit cards use a statement cycle and due date rather than an amortization timeline.">
                   <DateField label="Statement date" id="card-statement-date" value={cardStatementDate} onChange={setCardStatementDate} />
-                  <Field label="Payment due day of month" id="card-due-day" value={dueDay} onChange={setDueDay} />
+                  <label style={{ display: "grid", gap: 6, maxWidth: 150 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Due day</span><input id="card-due-day" inputMode="numeric" value={dueDay} onChange={(event) => setDueDay(event.target.value.replace(/[^0-9]/g, "").slice(0, 2))} style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }} /></label>
                 </FormSection>}
                 <FormSection title="Recurring payment rules">
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-                  {accountType === "credit-card" ? <><label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Minimum payment rule</span><select value={cardMinimumMode} onChange={(event) => setCardMinimumMode(event.target.value as "percent" | "fixed")} style={{ boxSizing: "border-box", width: "100%", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }}><option value="percent">Percentage of balance</option><option value="fixed">Fixed minimum</option></select></label>{cardMinimumMode === "percent" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}><Field label="Percent of balance" id="card-minimum-percent" value={cardMinimumPercent} onChange={setCardMinimumPercent} /><CurrencyField label="Minimum floor" id="card-minimum-floor" value={cardMinimumFloor} onChange={setCardMinimumFloor} /></div> : <CurrencyField label="Fixed minimum payment" id="minimum-payment" value={minimumPayment} onChange={setMinimumPayment} />}</> : <CurrencyField label="Minimum payment" id="minimum-payment" value={minimumPayment} onChange={setMinimumPayment} />}
+                  {accountType === "credit-card" ? <><label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Minimum payment rule</span><select value={cardMinimumMode} onChange={(event) => setCardMinimumMode(event.target.value as "percent" | "fixed")} style={{ boxSizing: "border-box", width: "100%", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }}><option value="percent">Percentage of balance</option><option value="fixed">Fixed minimum</option></select></label>{cardMinimumMode === "percent" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) minmax(140px, 1fr)", gap: 10, minWidth: 0 }}><div style={{ minWidth: 0 }}><Field label="Percent of balance" id="card-minimum-percent" value={cardMinimumPercent} onChange={setCardMinimumPercent} /></div><div style={{ minWidth: 0 }}><CurrencyField label="Minimum floor" id="card-minimum-floor" value={cardMinimumFloor} onChange={setCardMinimumFloor} /></div></div> : <CurrencyField label="Fixed minimum payment" id="minimum-payment" value={minimumPayment} onChange={setMinimumPayment} />}</> : <CurrencyField label="Minimum payment" id="minimum-payment" value={minimumPayment} onChange={setMinimumPayment} />}
                   <CurrencyField label="Monthly extra payment" id="additional-monthly-payment" value={additionalMonthlyPayment} onChange={setAdditionalMonthlyPayment} />
                   {accountType === "loan" ? <Field label="Recurring due day" id="due-day" value={dueDay} onChange={setDueDay} /> : <div style={{ fontSize: 12, color: currentTheme.textMuted }}>The projected minimum is recalculated from the balance each month.</div>}
                   </div>
@@ -3737,9 +3740,10 @@ export default function LoanInterestSimulatorMockup() {
                     </span>
                   </div>
                 </FormSection> : null}
-                {accountType === "credit-card" ? <CreditCardActivityEditor theme={currentTheme} transactions={creditCardTransactions} onChange={setCreditCardTransactions} /> : null}
                 <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={saveCurrentLoan} style={{ border: `1px solid ${currentTheme.accent}`, background: currentTheme.accent, color: "#fff", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{currentLoanId ? "Save changes" : accountType === "credit-card" ? "Create credit card" : "Create loan"}</button></div>
               </>
+            ) : activeLoanTab === "transactions" ? (
+              <CreditCardActivityEditor theme={currentTheme} transactions={creditCardTransactions} onChange={setCreditCardTransactions} />
             ) : activeLoanTab === "history" ? (
               <>
                 <div
@@ -4266,7 +4270,7 @@ export default function LoanInterestSimulatorMockup() {
             ) : null}
           </section>
 
-          <section style={{ display: activeLoanTab === "details" ? "none" : "grid", gap: 24, textAlign: "left", width: "100%", minWidth: 0 }}>
+          <section style={{ display: activeLoanTab === "details" || activeLoanTab === "transactions" ? "none" : "grid", gap: 24, textAlign: "left", width: "100%", minWidth: 0 }}>
             <div
               style={{
                 background: currentTheme.surface,
