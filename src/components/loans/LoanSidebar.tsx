@@ -8,7 +8,7 @@ type LoanSidebarProps = {
   currentLoanId: string | null;
   loanName: string;
   loans: SidebarLoan[];
-  onAdd: () => void;
+  onAdd: (type: "loan" | "credit-card") => void;
   onCollapse: () => void;
   onDelete: (loanId: string) => void;
   onOverview: () => void;
@@ -34,9 +34,7 @@ export function LoanSidebar({
         {!collapsed ? <strong style={{ fontSize: 16 }}>Your loans</strong> : null}
         <button type="button" aria-label={collapsed ? "Expand loan sidebar" : "Collapse loan sidebar"} onClick={onCollapse} style={{ width: collapsed ? 30 : 36, height: collapsed ? 30 : 36, display: "grid", placeItems: "center", border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 8, background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", cursor: "pointer" }}><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor"/><path d="M6 3v10" stroke="currentColor"/><path d={collapsed ? "m9 6 2 2-2 2" : "m11 6-2 2 2 2"} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
       </div>
-      {!collapsed ? <button type="button" onClick={onAdd} title="Add loan" style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: 9, width: "100%", border: "1px solid var(--app-accent, #2563eb)", borderRadius: 11, padding: "10px 12px", background: "var(--app-accent, #2563eb)", color: "#fff", fontWeight: 750, cursor: "pointer" }}>
-        <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>Add loan
-      </button> : null}
+      {!collapsed ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}><button type="button" onClick={() => onAdd("loan")} title="Add loan" style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: 7, border: "1px solid var(--app-accent, #2563eb)", borderRadius: 11, padding: "10px 10px", background: "var(--app-accent, #2563eb)", color: "#fff", fontWeight: 750, cursor: "pointer" }}><span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>Loan</button><button type="button" onClick={() => onAdd("credit-card")} title="Add credit card" style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: 7, border: "1px solid var(--app-accent, #2563eb)", borderRadius: 11, padding: "10px 10px", background: "var(--app-accent-soft, #dbeafe)", color: "var(--app-text, #0f172a)", fontWeight: 750, cursor: "pointer" }}><span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>+</span>Card</button></div> : null}
       {!collapsed ? <div style={{ display: "grid", gap: 7, alignContent: "start" }}>
         <button type="button" onClick={onOverview} style={{ width: "100%", textAlign: "left", border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 10, padding: "10px 12px", background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", fontWeight: 750, cursor: "pointer" }}>Overall summary</button>
         {!currentLoanId && loanName ? <div style={{ padding: collapsed ? "10px 0" : "10px 12px", textAlign: collapsed ? "center" : "left", borderRadius: 10, background: "var(--app-accent-soft, #dbeafe)", color: "var(--app-text, #0f172a)", fontSize: 13, fontWeight: 700 }} title="Unsaved loan">{collapsed ? "*" : `${loanName || "New loan"} (draft)`}</div> : null}

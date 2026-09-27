@@ -113,6 +113,7 @@ type SerializedDueDayChange = Omit<DueDayChange, "endMonth" | "startMonth"> & {
 };
 
 type LoanSnapshot = {
+  accountType?: "loan" | "credit-card";
   activeView: "assumed" | "history" | "whatif";
   additionalMonthlyPayment: string;
   aprPercent: string;
@@ -149,6 +150,8 @@ type LoanSnapshot = {
   oneOffPayments: SerializedPaymentEvent[];
   overviewBalance?: number;
   overviewOriginalBalance?: number;
+  promoType?: "none" | "zero" | "deferred";
+  promoEndDate?: string;
   paymentDateOverrides: Record<string, string>;
   paymentLabelOverrides: Record<string, string>;
   roundDailyInterest: boolean;
@@ -1159,9 +1162,17 @@ function estimateSavedLoanBalance(data: LoanSnapshot) {
   });
 }
 
-function DebtOverview({ loans, theme }: { loans: SavedLoanRecord[]; theme: ThemeDefinition }) {
+function DebtOverview({ loans, theme, userId }: { loans: SavedLoanRecord[]; theme: ThemeDefinition; userId: string }) {
   const [extraPayment, setExtraPayment] = useState("0.00");
   const [strategy, setStrategy] = useState<PortfolioStrategy>("avalanche");
+  const budgetKey = `loan-sim:budget:${userId}`;
+  const [bills, setBills] = useState<Array<{ id: string; name: string; category: string; amount: number }>>(() => { try { return JSON.parse(localStorage.getItem(budgetKey) ?? "[]") as Array<{ id: string; name: string; category: string; amount: number }>; } catch { return []; } });
+  const [billName, setBillName] = useState("");
+  const [billCategory, setBillCategory] = useState("Utilities");
+  const [billAmount, setBillAmount] = useState(0);
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
+  useEffect(() => { localStorage.setItem(budgetKey, JSON.stringify(bills)); }, [budgetKey, bills]);
+  useEffect(() => { try { const saved = JSON.parse(localStorage.getItem(`loan-sim:paycheck-scenarios:${userId}`) ?? "null") as { scenarios?: Array<{ incomeType?: string; inputs?: { annualSalary?: number }; hourlyRate?: number; hoursPerWeek?: number }> } | null; const scenarios = saved?.scenarios ?? []; setMonthlyIncome(scenarios.reduce((sum, s) => sum + (s.incomeType === "hourly" ? (s.hourlyRate ?? 0) * (s.hoursPerWeek ?? 0) * 52 / 12 : (s.inputs?.annualSalary ?? 0) / 12), 0)); } catch { setMonthlyIncome(0); } }, [userId]);
   const portfolioLoans = loans.map((loan) => ({ id: loan.id, name: loan.name, balance: estimateSavedLoanBalance(loan.data), apr: Number(loan.data.aprPercent) || 0, minimum: parseCurrency(loan.data.minimumPayment) + parseCurrency(loan.data.additionalMonthlyPayment) })).filter((loan) => loan.balance > 0);
   const extra = parseCurrency(extraPayment);
   const results = {
@@ -1177,7 +1188,8 @@ function DebtOverview({ loans, theme }: { loans: SavedLoanRecord[]; theme: Theme
     {portfolioLoans.length > 0 ? <><section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 20, boxShadow: theme.cardShadow, display: "grid", gap: 16 }}><div style={{ maxWidth: 280 }}><CurrencyField id="portfolio-extra" label="Extra available for debt each month" value={extraPayment} onChange={setExtraPayment} /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>{(["avalanche", "snowball", "minimum"] as const).map((method) => <button key={method} type="button" onClick={() => setStrategy(method)} style={{ border: `1px solid ${strategy === method ? theme.accent : theme.cardBorder}`, borderRadius: 14, padding: 14, background: strategy === method ? theme.accentSoft : theme.surface, color: theme.text, textAlign: "left", cursor: "pointer", display: "grid", gap: 6 }}><strong>{method === "avalanche" ? "Debt avalanche" : method === "snowball" ? "Debt snowball" : "Minimum payments"}</strong><span style={{ fontSize: 12, color: theme.textMuted }}>{method === "avalanche" ? "Highest APR first" : method === "snowball" ? "Smallest balance first" : "No targeted extra payment"}</span><span style={{ fontSize: 13 }}>{formatCurrency(results[method].totalInterest)} interest · {results[method].months} months</span></button>)}</div></section>
     <section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 20, boxShadow: theme.cardShadow, overflow: "hidden" }}><h3 style={{ margin: "0 0 14px" }}>Loans</h3><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Loan", "Balance", "APR", "Monthly payment", "Priority"].map((heading) => <th key={heading} style={{ padding: 9, textAlign: "left", borderBottom: `1px solid ${theme.cardBorder}`, color: theme.textMuted, fontSize: 12 }}>{heading}</th>)}</tr></thead><tbody>{[...portfolioLoans].sort((a, b) => strategy === "avalanche" ? b.apr - a.apr : strategy === "snowball" ? a.balance - b.balance : 0).map((loan, index) => <tr key={loan.id}><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}`, fontWeight: 650 }}>{loan.name}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{formatCurrency(loan.balance)}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{formatPercent(loan.apr)}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{formatCurrency(loan.minimum)}</td><td style={{ padding: 10, borderBottom: `1px solid ${theme.cardBorder}` }}>{strategy === "minimum" ? "—" : index + 1}</td></tr>)}</tbody></table></section>
     <section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 20, boxShadow: theme.cardShadow, overflowX: "auto" }}><h3 style={{ margin: "0 0 14px" }}>Next 12 months</h3><table style={{ borderCollapse: "collapse", minWidth: 980, width: "100%" }}><thead><tr><th style={{ position: "sticky", left: 0, background: theme.surface, padding: 8, textAlign: "left" }}>Loan</th>{selected.snapshots.map((snapshot) => <th key={snapshot.date.toISOString()} style={{ padding: 8, fontSize: 11, color: theme.textMuted }}>{snapshot.date.toLocaleString("en-US", { month: "short", year: "2-digit" })}</th>)}</tr></thead><tbody>{portfolioLoans.map((loan) => <tr key={loan.id}><td style={{ position: "sticky", left: 0, background: theme.surface, padding: 8, fontWeight: 650 }}>{loan.name}</td>{selected.snapshots.map((snapshot) => <td key={snapshot.date.toISOString()} style={{ padding: 8, fontSize: 12, borderTop: `1px solid ${theme.cardBorder}` }}>{formatCurrency(snapshot.balances[loan.id] ?? 0)}</td>)}</tr>)}</tbody></table></section></> : null}
-  </main>;
+    <section style={{ background: theme.surface, border: `1px solid ${theme.cardBorder}`, borderRadius: 18, padding: 20, boxShadow: theme.cardShadow, display: "grid", gap: 14 }}><div><h3 style={{ margin: 0 }}>Monthly budget</h3><p style={{ margin: "5px 0 0", color: theme.textMuted, fontSize: 13 }}>Track recurring bills so the extra amount going to debt reflects real cash flow.</p></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}><input value={billName} onChange={(event) => setBillName(event.target.value)} placeholder="Bill name" style={{ padding: 10, borderRadius: 9, border: `1px solid ${theme.cardBorder}` }} /><input value={billCategory} onChange={(event) => setBillCategory(event.target.value)} placeholder="Category" style={{ padding: 10, borderRadius: 9, border: `1px solid ${theme.cardBorder}` }} /><input type="number" value={billAmount || ""} onChange={(event) => setBillAmount(Number(event.target.value) || 0)} placeholder="Monthly amount" style={{ padding: 10, borderRadius: 9, border: `1px solid ${theme.cardBorder}` }} /><button type="button" onClick={() => { if (!billName.trim() || billAmount <= 0) return; setBills((current) => [...current, { id: crypto.randomUUID(), name: billName.trim(), category: billCategory.trim() || "Other", amount: billAmount }]); setBillName(""); setBillAmount(0); }} style={{ border: 0, borderRadius: 9, background: theme.accent, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Add bill</button></div><div style={{ display: "grid", gap: 7 }}>{bills.map((bill) => <div key={bill.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 11px", borderRadius: 9, background: theme.surfaceMuted }}><span>{bill.name} <small style={{ color: theme.textMuted }}>({bill.category})</small></span><span><strong>{formatCurrency(bill.amount)}</strong> <button type="button" onClick={() => setBills((current) => current.filter((item) => item.id !== bill.id))} style={{ marginLeft: 8, border: 0, background: "transparent", color: "#b91c1c", cursor: "pointer" }}>×</button></span></div>)}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}><SummaryValue label="Estimated monthly income" value={monthlyIncome ? formatCurrency(monthlyIncome) : "Add a pay estimate"} /><SummaryValue label="Monthly bills" value={formatCurrency(bills.reduce((sum, bill) => sum + bill.amount, 0))} /><SummaryValue label="After bills and minimums" value={monthlyIncome ? formatCurrency(monthlyIncome - bills.reduce((sum, bill) => sum + bill.amount, 0) - portfolioLoans.reduce((sum, loan) => sum + loan.minimum, 0)) : "—"} /></div></section>
+   </main>;
 }
 
 const footnoteSupStyle = {
@@ -1275,6 +1287,9 @@ export default function LoanInterestSimulatorMockup() {
   const [currentLoanId, setCurrentLoanId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState("");
   const [loanName, setLoanName] = useState("");
+  const [accountType, setAccountType] = useState<"loan" | "credit-card">("loan");
+  const [promoType, setPromoType] = useState<"none" | "zero" | "deferred">("none");
+  const [promoEndDate, setPromoEndDate] = useState("");
   const [startingPrincipal, setStartingPrincipal] = useState("");
   const [startingPrincipalDate, setStartingPrincipalDate] = useState("");
   const [firstPaymentDate, setFirstPaymentDate] = useState("");
@@ -1363,6 +1378,7 @@ export default function LoanInterestSimulatorMockup() {
   }, [profileMenuOpen]);
 
   const createBlankLoanSnapshot = (): LoanSnapshot => ({
+    accountType: "loan",
     activeView: "assumed",
     additionalMonthlyPayment: "0",
     aprPercent: "",
@@ -1397,6 +1413,8 @@ export default function LoanInterestSimulatorMockup() {
     newWhatIfDate: "",
     newWhatIfLabel: "Anticipated one-time payment",
     oneOffPayments: [],
+    promoType: "none",
+    promoEndDate: "",
     paymentDateOverrides: {},
     paymentLabelOverrides: {},
     roundDailyInterest: false,
@@ -1471,6 +1489,9 @@ export default function LoanInterestSimulatorMockup() {
   });
 
   const applyLoanSnapshot = (snapshot: LoanSnapshot) => {
+    setAccountType(snapshot.accountType ?? "loan");
+    setPromoType(snapshot.promoType ?? "none");
+    setPromoEndDate(snapshot.promoEndDate ?? "");
     setLoanName(snapshot.loanName);
     setStartingPrincipal(snapshot.startingPrincipal);
     setStartingPrincipalDate(snapshot.startingPrincipalDate);
@@ -1533,6 +1554,7 @@ export default function LoanInterestSimulatorMockup() {
   };
 
   const buildLoanSnapshot = (): LoanSnapshot => ({
+    accountType,
     activeView,
     additionalMonthlyPayment,
     aprPercent,
@@ -1567,6 +1589,8 @@ export default function LoanInterestSimulatorMockup() {
     newWhatIfDate,
     newWhatIfLabel,
     oneOffPayments: oneOffPayments.map(serializePaymentEvent),
+    promoType,
+    promoEndDate,
     paymentDateOverrides,
     paymentLabelOverrides,
     roundDailyInterest,
@@ -2030,10 +2054,14 @@ export default function LoanInterestSimulatorMockup() {
     setSaveStatus(`Saved ${trimmedName}`);
   };
 
-  const startNewLoan = () => {
+  const startNewLoan = (type: "loan" | "credit-card" = "loan") => {
     setCurrentLoanId(null);
     setSaveStatus("");
     applyLoanSnapshot(createBlankLoanSnapshot());
+    setAccountType(type);
+    setPromoType("none");
+    setPromoEndDate("");
+    setLoanName(type === "credit-card" ? "New credit card" : "");
     setActiveLoanTab("details");
     setActiveView("assumed");
   };
@@ -3263,7 +3291,7 @@ export default function LoanInterestSimulatorMockup() {
           currentLoanId={currentLoanId}
           loanName={loanName}
           loans={savedLoans}
-          onAdd={() => { startNewLoan(); setActivePage("simulator"); }}
+          onAdd={(type) => { startNewLoan(type); setActivePage("simulator"); }}
           onCollapse={() => setLoanSidebarCollapsed((collapsed) => !collapsed)}
           onDelete={deleteLoan}
           onOverview={() => setActivePage("overview")}
@@ -3292,7 +3320,7 @@ export default function LoanInterestSimulatorMockup() {
               <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 30, width: 220, padding: 8, display: "grid", gap: 4, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 14, background: currentTheme.surface, boxShadow: "0 18px 40px rgba(15, 23, 42, 0.18)" }}>
                 {[
                   { label: "View profile", action: () => setActivePage("profile") },
-                  { label: "Paycheck estimator", action: () => setActivePage("paycheck") },
+                  { label: "Pay estimator", action: () => setActivePage("paycheck") },
                   { label: "Log out", action: logoutUser },
                 ].map((item) => (
                   <button key={item.label} type="button" onClick={() => { setProfileMenuOpen(false); item.action(); }} style={{ border: 0, borderRadius: 9, padding: "10px 12px", background: "transparent", color: currentTheme.text, textAlign: "left", fontWeight: 600, cursor: "pointer" }}>{item.label}</button>
@@ -3302,7 +3330,7 @@ export default function LoanInterestSimulatorMockup() {
           </div>
         </header>
         {activePage === "overview" ? (
-          <DebtOverview loans={savedLoans} theme={currentTheme} />
+          <DebtOverview loans={savedLoans} theme={currentTheme} userId={currentUserId} />
         ) : activePage === "profile" ? (
           <main
             style={{
@@ -3591,11 +3619,12 @@ export default function LoanInterestSimulatorMockup() {
               padding: 20,
               textAlign: "left",
               display: "grid",
+              gridTemplateColumns: activeLoanTab === "details" ? "repeat(auto-fit, minmax(280px, 1fr))" : undefined,
               gap: 16,
               boxShadow: currentTheme.cardShadow,
             }}
           >
-            <h2 style={{ margin: 0, fontSize: 22 }}>
+            <h2 style={{ margin: 0, fontSize: 22, gridColumn: activeLoanTab === "details" ? "1 / -1" : undefined }}>
               {activeLoanTab === "details"
                 ? "Loan Details"
                 : activeLoanTab === "history"
@@ -3605,9 +3634,10 @@ export default function LoanInterestSimulatorMockup() {
             {activeLoanTab === "details" ? (
               <>
                 <FormSection title="Loan basics">
-                  <Field label="Loan name" id="loan-name" value={loanName} onChange={setLoanName} />
-                  <CurrencyField label="Starting principal" id="starting-principal" value={startingPrincipal} onChange={setStartingPrincipal} />
-                  <Field label="APR (%)" id="apr" value={aprPercent} onChange={setAprPercent} />
+                  <Field label={accountType === "credit-card" ? "Credit card name" : "Loan name"} id="loan-name" value={loanName} onChange={setLoanName} />
+                  <CurrencyField label={accountType === "credit-card" ? "Current balance" : "Starting principal"} id="starting-principal" value={startingPrincipal} onChange={setStartingPrincipal} />
+                  <Field label={accountType === "credit-card" ? "Standard APR (%)" : "APR (%)"} id="apr" value={aprPercent} onChange={setAprPercent} />
+                  {accountType === "credit-card" ? <div style={{ gridColumn: "1 / -1", display: "grid", gap: 12, padding: 14, borderRadius: 14, background: currentTheme.surfaceMuted, border: `1px solid ${currentTheme.cardBorder}` }}><strong>Credit card promotion</strong><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}><label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Promotion type</span><select value={promoType} onChange={(event) => setPromoType(event.target.value as "none" | "zero" | "deferred")} style={{ boxSizing: "border-box", width: "100%", border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }}><option value="none">No promotion</option><option value="zero">0% APR until a date</option><option value="deferred">Deferred interest until a date</option></select></label>{promoType !== "none" ? <DateField label="Promotion end date" id="promo-end-date" value={promoEndDate} onChange={setPromoEndDate} /> : null}</div>{promoType === "zero" ? <span style={{ fontSize: 12, color: currentTheme.textMuted }}>No interest accrues during the promotional period; the standard APR applies after the end date.</span> : promoType === "deferred" ? <span style={{ fontSize: 12, color: currentTheme.textMuted }}>Deferred interest may be charged retroactively if the promotional balance is not paid by the end date.</span> : null}</div> : null}
                 </FormSection>
                 <FormSection title="Timeline">
                   <DateField label="Starting principal date" id="starting-date" value={startingPrincipalDate} onChange={setStartingPrincipalDate} />
@@ -3645,9 +3675,9 @@ export default function LoanInterestSimulatorMockup() {
                     </span>
                   </div>
                 </FormSection>
-                <FormSection title="Actions">
+                <div style={{ gridColumn: "1 / -1" }}><FormSection title="Actions">
                   <button type="button" onClick={saveCurrentLoan} style={{ border: `1px solid ${currentTheme.accent}`, background: currentTheme.accent, color: "#fff", borderRadius: 10, padding: "10px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{currentLoanId ? "Save changes" : "Create loan"}</button>
-                </FormSection>
+                </FormSection></div>
               </>
             ) : activeLoanTab === "history" ? (
               <>

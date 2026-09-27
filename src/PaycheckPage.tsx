@@ -21,14 +21,15 @@ export type PaycheckScenario = {
   imputedMedicalPerPaycheck: number;
   imputedOtherPerPaycheck: number;
   imputedVisionPerPaycheck: number;
-  incomeType: "salary" | "hourly" | "contract" | "bonus" | "severance" | "one-time-w2" | "one-time-contract";
+  incomeType: "salary" | "hourly" | "contract" | "one-time-w2" | "one-time-contract";
   inputs: PaycheckInputs;
   label: string;
+  payments: Array<{ amount: number; date: string; id: string; label: string }>;
   startDate: string;
   state: string;
 };
 
-type LegacyScenario = Omit<Partial<PaycheckScenario>, "incomeType"> & { effectiveDate?: string; incomeType?: PaycheckScenario["incomeType"] | "variable-w2" };
+type LegacyScenario = Omit<Partial<PaycheckScenario>, "incomeType"> & { effectiveDate?: string; incomeType?: PaycheckScenario["incomeType"] | "variable-w2" | "bonus" | "severance" };
 
 type TaxSettings = {
   additionalIncome: number;
@@ -90,6 +91,7 @@ const makeScenario = (index = 0, source?: PaycheckScenario): PaycheckScenario =>
   incomeType: "salary",
   inputs: { ...(source?.inputs ?? defaultInputs) },
   label: `Salary ${index + 1}`,
+  payments: source?.payments ?? [],
   startDate: "",
   state: source?.state ?? "PA",
 });
@@ -109,9 +111,10 @@ const normalizeScenarios = (value: unknown): PaycheckScenario[] => {
       imputedMedicalPerPaycheck: saved.imputedMedicalPerPaycheck ?? 0,
       imputedOtherPerPaycheck: saved.imputedOtherPerPaycheck ?? 0,
       imputedVisionPerPaycheck: saved.imputedVisionPerPaycheck ?? 0,
-      incomeType: saved.incomeType === "variable-w2" ? "salary" : saved.incomeType ?? "salary",
+      incomeType: saved.incomeType === "variable-w2" || saved.incomeType === "bonus" || saved.incomeType === "severance" ? "one-time-w2" : saved.incomeType ?? "salary",
       inputs: { ...defaultInputs, ...(saved.inputs ?? {}) },
       label: legacyLabel || !saved.label ? `Salary ${index + 1}` : saved.label,
+      payments: Array.isArray(saved.payments) ? saved.payments : [],
       startDate: saved.startDate ?? saved.effectiveDate ?? "",
       state: saved.state ?? "PA",
     };
@@ -196,10 +199,22 @@ function ScenarioResult({ result }: { result: PaycheckResult }) {
       <ResultLine label="Medicare" value={`−${money(result.medicareTax)}`} />
       <ResultLine label="State and local tax" value={`−${money(result.stateWithholding)}`} />
       <ResultLine label="Post-tax benefits" value={`−${money(result.postTaxBenefits)}`} />
-      <ResultLine label="Estimated net paycheck" value={money(result.netPay)} strong />
+      <ResultLine label="Estimated net pay" value={money(result.netPay)} strong />
       <ResultLine label="Estimated annual take-home" value={money(result.annualNet)} />
     </div>
   );
+}
+
+function ContractPaymentsEditor({ payments, onAdd, onDelete }: { payments: Array<{ amount: number; date: string; id: string; label: string }>; onAdd: (amount: number, date: string, label: string) => void; onDelete: (id: string) => void }) {
+  const [amount, setAmount] = useState(0);
+  const [date, setDate] = useState("");
+  const [label, setLabel] = useState("Contract payment");
+  return <section style={{ display: "grid", gap: 12, padding: 14, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 14, background: "var(--app-surface-muted, #f8fafc)" }}>
+    <div><strong>Contract payment history</strong><div style={{ marginTop: 4, color: "var(--app-text-muted, #64748b)", fontSize: 12, lineHeight: 1.45 }}>Add each changing payment with its date. Annual tax estimates use these amounts and apply W-2 Social Security wages before self-employment income.</div></div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}><DateField id="contract-payment-date" label="Payment date" value={date} onChange={setDate} /><NumericField label="Amount" prefix="$" value={amount} onChange={setAmount} /><TextField label="Memo" value={label} onChange={setLabel} /></div>
+    <button type="button" onClick={() => { onAdd(amount, date, label); setAmount(0); setDate(""); }} style={{ justifySelf: "start", border: "1px solid var(--app-accent, #2563eb)", background: "var(--app-accent, #2563eb)", color: "#fff", borderRadius: 9, padding: "9px 12px", fontWeight: 700, cursor: "pointer" }}>Add payment</button>
+    {payments.length ? <div style={{ display: "grid", gap: 6 }}>{payments.slice().sort((a, b) => a.date.localeCompare(b.date)).map((payment) => <div key={payment.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 10px", borderRadius: 9, background: "var(--app-surface, #fff)", border: "1px solid var(--app-border, #e2e8f0)" }}><span>{payment.date} · {payment.label}</span><span style={{ display: "flex", alignItems: "center", gap: 8 }}><strong>{money(payment.amount)}</strong><button type="button" onClick={() => onDelete(payment.id)} aria-label="Delete payment" style={{ border: 0, background: "transparent", color: "var(--app-danger-text, #b91c1c)", cursor: "pointer" }}>×</button></span></div>)}</div> : <span style={{ color: "var(--app-text-muted, #64748b)", fontSize: 13 }}>No contract payments added yet.</span>}
+  </section>;
 }
 
 export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId: string }) {
@@ -221,7 +236,7 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
   const [cloudLoaded, setCloudLoaded] = useState(!cloudStorageEnabled);
   const [saveStatus, setSaveStatus] = useState("");
   const activeScenario = scenarios.find((scenario) => scenario.id === activeId) ?? scenarios[0];
-  const isOneOff = (scenario: PaycheckScenario) => ["bonus", "severance", "one-time-w2", "one-time-contract"].includes(scenario.incomeType);
+  const isOneOff = (scenario: PaycheckScenario) => ["one-time-w2", "one-time-contract"].includes(scenario.incomeType);
   const resolvedInputs = (scenario: PaycheckScenario): PaycheckInputs => {
     const annualSalary = scenario.incomeType === "hourly" ? scenario.hourlyRate * scenario.hoursPerWeek * 52 : scenario.inputs.annualSalary;
     const withoutState = { ...scenario.inputs, annualSalary, stateWithholdingPerPaycheck: 0 };
@@ -267,6 +282,10 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
     try { await saveCloudPaycheckPlan(userId, { scenarios, taxSettings }); setSaveStatus("Saved."); }
     catch { setSaveStatus("Could not save. Try again."); }
   };
+  const savePlanNow = async (nextScenarios: PaycheckScenario[]) => {
+    if (!cloudStorageEnabled || !cloudLoaded) return;
+    try { await saveCloudPaycheckPlan(userId, { scenarios: nextScenarios, taxSettings }); setSaveStatus("Saved."); } catch { setSaveStatus("Could not save. Try again."); }
+  };
 
   const updateScenario = (update: Partial<PaycheckScenario>) => {
     setScenarios((current) => current.map((scenario) => scenario.id === activeScenario.id ? { ...scenario, ...update } : scenario));
@@ -282,7 +301,7 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
     const next = makeScenario(scenarios.length, activeScenario);
     next.incomeType = incomeType;
     next.label = label;
-    next.startDate = ["bonus", "severance", "one-time-w2", "one-time-contract"].includes(incomeType) ? new Date().toISOString().slice(0, 10) : "";
+    next.startDate = ["one-time-w2", "one-time-contract"].includes(incomeType) ? new Date().toISOString().slice(0, 10) : "";
     setScenarios((current) => [...current, next]);
     setActiveId(next.id);
     setAddMenuOpen(false);
@@ -293,6 +312,11 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
     setScenarios(remaining);
     setActiveId(remaining[0].id);
   };
+  const addContractPayment = (amount: number, date: string, label: string) => {
+    if (!amount || !date) return;
+    updateScenario({ payments: [...activeScenario.payments, { amount, date, id: crypto.randomUUID(), label: label || "Contract payment" }] });
+  };
+  const deleteContractPayment = (id: string) => updateScenario({ payments: activeScenario.payments.filter((payment) => payment.id !== id) });
   const moveScenario = (draggedId: string, targetId: string) => {
     if (draggedId === targetId) return;
     setScenarios((current) => {
@@ -302,6 +326,7 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
       const reordered = [...current];
       const [dragged] = reordered.splice(from, 1);
       reordered.splice(to, 0, dragged);
+      void savePlanNow(reordered);
       return reordered;
     });
   };
@@ -332,7 +357,7 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
       const fraction = isOneOff(scenario) ? 1 : boundedEnd < boundedStart ? 0 : (Math.floor((boundedEnd.getTime() - boundedStart.getTime()) / 86_400_000) + 1) / 365;
       const inputs = resolvedInputs(scenario);
       const result = estimatePaycheck(inputs);
-      if (scenario.incomeType === "contract" || scenario.incomeType === "one-time-contract") selfEmploymentIncome += inputs.annualSalary * fraction;
+      if (scenario.incomeType === "contract" || scenario.incomeType === "one-time-contract") selfEmploymentIncome += scenario.payments.length > 0 ? scenario.payments.reduce((sum, payment) => sum + payment.amount, 0) : inputs.annualSalary * fraction;
       else {
         const periodMultiplier = isOneOff(scenario) ? 1 : result.periodsPerYear * fraction;
         const taxableWages = isOneOff(scenario) ? inputs.annualSalary + inputs.imputedIncomePerPaycheck : result.taxableFederalWages * periodMultiplier;
@@ -352,20 +377,20 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
       <section style={{ ...cardStyle, display: "grid", gap: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ display: "grid", gap: 5, maxWidth: 780 }}>
-            <h2 style={{ margin: 0, fontSize: 28 }}>Paycheck estimate</h2>
+            <h2 style={{ margin: 0, fontSize: 28 }}>Pay estimate</h2>
             <p style={{ margin: 0, color: "var(--app-text-muted, #64748b)", lineHeight: 1.55 }}>
               Build recurring pay estimates and dated one-time income for bonuses, severance, and contract work. The Annual Tax Estimate combines everything saved here.
             </p>
           </div>
           <div style={{ display: "flex", gap: 10, position: "relative" }}>
-            <button type="button" onClick={() => setAddMenuOpen((open) => !open)} style={{ border: "1px solid var(--app-accent, #2563eb)", background: "var(--app-accent, #2563eb)", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>+ Add income ▾</button>
-            {addMenuOpen ? <div style={{ position: "absolute", zIndex: 30, right: 52, top: "calc(100% + 7px)", width: 245, display: "grid", gap: 3, padding: 7, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, background: "var(--app-surface, #fff)", boxShadow: "0 16px 36px rgba(15, 23, 42, 0.18)" }}>{[["salary", "Salary"], ["hourly", "Hourly job"], ["contract", "Ongoing contract work"], ["bonus", "One-time bonus"], ["severance", "Severance payment"], ["one-time-w2", "Other one-time W-2 income"], ["one-time-contract", "One-time contract income"]].map(([type, label]) => <button key={type} type="button" onClick={() => addScenario(type as PaycheckScenario["incomeType"], label)} style={{ border: 0, borderRadius: 8, padding: "9px 10px", background: "transparent", color: "var(--app-text, #0f172a)", textAlign: "left", cursor: "pointer" }}>{label}</button>)}</div> : null}
+            <button type="button" onClick={() => setAddMenuOpen((open) => !open)} style={{ border: "1px solid var(--app-accent, #2563eb)", background: "var(--app-accent, #2563eb)", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>+ Add pay ▾</button>
+            {addMenuOpen ? <div style={{ position: "absolute", zIndex: 30, right: 52, top: "calc(100% + 7px)", width: 245, display: "grid", gap: 3, padding: 7, border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, background: "var(--app-surface, #fff)", boxShadow: "0 16px 36px rgba(15, 23, 42, 0.18)" }}>{[["salary", "Salary"], ["hourly", "Hourly job"], ["contract", "Ongoing contract work"], ["one-time-w2", "One-time payment"], ["one-time-contract", "One-time contract payment"]].map(([type, label]) => <button key={type} type="button" onClick={() => addScenario(type as PaycheckScenario["incomeType"], label)} style={{ border: 0, borderRadius: 8, padding: "9px 10px", background: "transparent", color: "var(--app-text, #0f172a)", textAlign: "left", cursor: "pointer" }}>{label}</button>)}</div> : null}
             <button type="button" aria-label="Close paycheck estimate" onClick={onClose} style={{ border: "1px solid var(--app-border, #e2e8f0)", background: "var(--app-surface, #fff)", color: "var(--app-text, #0f172a)", borderRadius: 10, width: 42, fontSize: 24, cursor: "pointer" }}>×</button>
           </div>
         </div>
         {saveStatus ? <div style={{ fontSize: 12, color: "var(--app-text-muted, #64748b)", textAlign: "right" }}>{saveStatus}</div> : null}
         <div style={{ display: "flex", borderBottom: "1px solid var(--app-border, #e2e8f0)" }}>
-          {(["paychecks", "tax"] as const).map((tab) => <button key={tab} type="button" onClick={() => setPageTab(tab)} style={{ flex: "1 1 0", border: "1px solid var(--app-border, #e2e8f0)", borderBottomColor: pageTab === tab ? "var(--app-surface, #fff)" : "var(--app-border, #e2e8f0)", borderRadius: "12px 12px 0 0", marginBottom: -1, padding: "11px 14px", background: pageTab === tab ? "var(--app-surface, #fff)" : "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", fontWeight: 750, cursor: "pointer" }}>{tab === "paychecks" ? "Paycheck estimate" : "Annual tax estimate"}</button>)}
+          {(["paychecks", "tax"] as const).map((tab) => <button key={tab} type="button" onClick={() => setPageTab(tab)} style={{ flex: "1 1 0", border: "1px solid var(--app-border, #e2e8f0)", borderBottomColor: pageTab === tab ? "var(--app-surface, #fff)" : "var(--app-border, #e2e8f0)", borderRadius: "12px 12px 0 0", marginBottom: -1, padding: "11px 14px", background: pageTab === tab ? "var(--app-surface, #fff)" : "var(--app-surface-muted, #f8fafc)", color: "var(--app-text, #0f172a)", fontWeight: 750, cursor: "pointer" }}>{tab === "paychecks" ? "Pay estimate" : "Annual tax estimate"}</button>)}
         </div>
         {pageTab === "paychecks" ? (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -384,11 +409,11 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
           <div style={{ display: "grid", gap: 12 }}>
             <h3 style={{ margin: 0, fontSize: 18 }}>Pay estimate</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-              <TextField label="Period name" value={activeScenario.label} onChange={(label) => updateScenario({ label })} />
-              <label style={{ display: "grid", gap: 6, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Income type</span><select value={activeScenario.incomeType} onChange={(event) => updateScenario({ incomeType: event.target.value as PaycheckScenario["incomeType"] })} style={controlStyle}><option value="salary">Salary</option><option value="hourly">Hourly wages</option><option value="contract">Ongoing contract work</option><option value="bonus">One-time bonus</option><option value="severance">Severance payment</option><option value="one-time-w2">Other one-time W-2 income</option><option value="one-time-contract">One-time contract income</option></select></label>
-              {isOneOff(activeScenario) ? <DateField id="income-payment-date" label="Payment date" value={activeScenario.startDate} onChange={(startDate) => updateScenario({ startDate })} /> : <><DateField id="income-start-date" label="Start date" value={activeScenario.startDate} onChange={(startDate) => updateScenario({ startDate })} /><DateField id="income-end-date" label="End date (optional)" minDate={activeScenario.startDate} value={activeScenario.endDate} onChange={(endDate) => updateScenario({ endDate })} /></>}
-              {activeScenario.incomeType === "hourly" ? <><NumericField label="Hourly rate" prefix="$" value={activeScenario.hourlyRate} onChange={(hourlyRate) => updateScenario({ hourlyRate })} /><NumericField label="Average hours per week" value={activeScenario.hoursPerWeek} onChange={(hoursPerWeek) => updateScenario({ hoursPerWeek })} /></> : <NumericField label={isOneOff(activeScenario) ? "Payment amount" : activeScenario.incomeType === "salary" ? "Annual salary" : "Annualized net contract income"} prefix="$" value={activeScenario.inputs.annualSalary} onChange={(value) => updateInputs("annualSalary", value)} />}
-              {!isOneOff(activeScenario) ? <label style={{ display: "grid", gap: 6, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Pay frequency</span>
+              <TextField label="Pay label" value={activeScenario.label} onChange={(label) => updateScenario({ label })} />
+              <div style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Pay type</span><div style={{ ...controlStyle, color: "var(--app-text-muted, #64748b)" }}>{activeScenario.incomeType === "one-time-w2" ? "One-time payment" : activeScenario.incomeType === "one-time-contract" ? "One-time contract payment" : activeScenario.incomeType === "contract" ? "Ongoing contract work" : activeScenario.incomeType === "hourly" ? "Hourly job" : "Salary"}</div></div>
+              {isOneOff(activeScenario) ? <DateField id="income-payment-date" label="Payment date" value={activeScenario.startDate} onChange={(startDate) => updateScenario({ startDate })} /> : activeScenario.incomeType !== "contract" ? <><DateField id="income-start-date" label="Start date" value={activeScenario.startDate} onChange={(startDate) => updateScenario({ startDate })} /><DateField id="income-end-date" label="End date (optional)" minDate={activeScenario.startDate} value={activeScenario.endDate} onChange={(endDate) => updateScenario({ endDate })} /></> : null}
+              {activeScenario.incomeType === "hourly" ? <><NumericField label="Hourly rate" prefix="$" value={activeScenario.hourlyRate} onChange={(hourlyRate) => updateScenario({ hourlyRate })} /><NumericField label="Average hours per week" value={activeScenario.hoursPerWeek} onChange={(hoursPerWeek) => updateScenario({ hoursPerWeek })} /></> : activeScenario.incomeType !== "contract" ? <NumericField label={isOneOff(activeScenario) ? "Payment amount" : "Annual salary"} prefix="$" value={activeScenario.inputs.annualSalary} onChange={(value) => updateInputs("annualSalary", value)} /> : null}
+              {!isOneOff(activeScenario) && activeScenario.incomeType !== "contract" ? <label style={{ display: "grid", gap: 6, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Pay frequency</span>
                 <select value={activeScenario.inputs.payFrequency} onChange={(event) => updateInputs("payFrequency", event.target.value as PayFrequency)} style={controlStyle}>
                   <option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="semimonthly">Semimonthly</option><option value="monthly">Monthly</option>
                 </select>
@@ -396,13 +421,15 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
             </div>
           </div>
 
+          {activeScenario.incomeType === "contract" ? <ContractPaymentsEditor payments={activeScenario.payments} onAdd={addContractPayment} onDelete={deleteContractPayment} /> : null}
+
           <div style={{ display: "grid", gap: 14 }}>
             <h3 style={{ margin: 0, fontSize: 18 }}>Taxes</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
               <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Federal filing status</span><select value={activeScenario.inputs.filingStatus} onChange={(event) => updateInputs("filingStatus", event.target.value as FilingStatus)} style={controlStyle}><option value="single">Single or married filing separately</option><option value="married">Married filing jointly</option><option value="head">Head of household</option></select></label>
               <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Work state</span><select value={activeScenario.state} onChange={(event) => updateScenario({ state: event.target.value })} style={controlStyle}>{STATES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
               <div style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Estimated state withholding</span><div style={{ ...controlStyle, color: "var(--app-text-muted, #64748b)" }}>{activeStateEstimate === null ? "Automatic estimate not yet available for this state" : money(activeStateEstimate)}</div></div>
-              <NumericField label="State and local withholding override (0 uses estimate)" prefix="$" value={activeScenario.inputs.stateWithholdingPerPaycheck} onChange={(value) => updateInputs("stateWithholdingPerPaycheck", value)} />
+              <NumericField label="State and local withholding override per pay period (0 uses estimate)" prefix="$" value={activeScenario.inputs.stateWithholdingPerPaycheck} onChange={(value) => updateInputs("stateWithholdingPerPaycheck", value)} />
             </div>
             <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 700 }}>Additional income and withholding adjustments</summary><div style={{ display: "grid", gap: 12, marginTop: 12 }}><label style={{ display: "flex", gap: 9, alignItems: "center", fontSize: 14 }}><input type="checkbox" checked={activeScenario.inputs.w4Step2Checked} onChange={(event) => updateInputs("w4Step2Checked", event.target.checked)} />Use higher withholding for multiple jobs or a working spouse</label><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}><NumericField label={isOneOff(activeScenario) ? "Federal tax withheld from this payment" : "Federal tax withheld per paycheck (optional override)"} prefix="$" value={activeScenario.federalWithholdingPerPaycheck} onChange={(federalWithholdingPerPaycheck) => updateScenario({ federalWithholdingPerPaycheck })} /><NumericField label="Annual tax credits" prefix="$" value={activeScenario.inputs.w4Credits} onChange={(value) => updateInputs("w4Credits", value)} /><NumericField label="Other annual income used for withholding" prefix="$" value={activeScenario.inputs.w4OtherIncome} onChange={(value) => updateInputs("w4OtherIncome", value)} /><NumericField label="Additional annual deductions" prefix="$" value={activeScenario.inputs.w4Deductions} onChange={(value) => updateInputs("w4Deductions", value)} /><NumericField label="Extra tax per paycheck" prefix="$" value={activeScenario.inputs.w4AdditionalWithholding} onChange={(value) => updateInputs("w4AdditionalWithholding", value)} /></div></div></details>
           </div>
@@ -427,11 +454,11 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
               <NumericField label="Roth 401(k)" suffix="%" value={activeScenario.inputs.roth401kPercent} onChange={(value) => updateInputs("roth401kPercent", value)} />
             </div>
           </details>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button type="button" onClick={() => void saveEstimate()} style={{ border: "1px solid var(--app-accent, #2563eb)", background: "var(--app-accent, #2563eb)", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>Save pay estimate</button>{scenarios.length > 1 ? <button type="button" onClick={deleteScenario} style={{ border: "1px solid #ef4444", color: "var(--app-danger-text, #b91c1c)", background: "var(--app-danger-bg, #fff1f2)", borderRadius: 10, padding: "9px 12px", cursor: "pointer" }}>Delete pay estimate</button> : null}</div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button type="button" onClick={() => void saveEstimate()} style={{ border: "1px solid var(--app-accent, #2563eb)", background: "var(--app-accent, #2563eb)", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>Save</button>{scenarios.length > 1 ? <button type="button" onClick={deleteScenario} style={{ border: "1px solid #ef4444", color: "var(--app-danger-text, #b91c1c)", background: "var(--app-danger-bg, #fff1f2)", borderRadius: 10, padding: "9px 12px", cursor: "pointer" }}>Delete</button> : null}</div>
         </section>
 
         <section style={{ ...cardStyle, display: "grid", gap: 14, position: "sticky", top: 16 }}>
-          <div><div style={{ color: "var(--app-text-muted, #64748b)", fontSize: 13 }}>{activeScenario.label}</div><div style={{ fontSize: 30, fontWeight: 850, letterSpacing: "-0.03em" }}>{money(isOneOff(activeScenario) ? activeScenario.inputs.annualSalary : activeScenario.incomeType === "contract" ? activeResult.grossPay : activeResult.netPay)}</div><div style={{ color: "var(--app-text-muted, #64748b)", fontSize: 13 }}>{isOneOff(activeScenario) ? "one-time gross payment" : activeScenario.incomeType === "contract" ? "average payment before taxes" : "estimated average take-home per paycheck"}</div></div>
+          <div><div style={{ color: "var(--app-text-muted, #64748b)", fontSize: 13 }}>{activeScenario.label}</div><div style={{ fontSize: 30, fontWeight: 850, letterSpacing: "-0.03em" }}>{money(isOneOff(activeScenario) ? activeScenario.inputs.annualSalary : activeScenario.incomeType === "contract" ? activeScenario.payments.reduce((sum, payment) => sum + payment.amount, 0) : activeResult.netPay)}</div><div style={{ color: "var(--app-text-muted, #64748b)", fontSize: 13 }}>{isOneOff(activeScenario) ? "one-time gross payment" : activeScenario.incomeType === "contract" ? "contract payments before taxes" : "estimated average take-home per pay period"}</div></div>
           {activeScenario.incomeType === "contract" || activeScenario.incomeType === "one-time-contract" ? <div style={{ padding: 12, borderRadius: 12, background: "var(--app-surface-muted, #f8fafc)", color: "var(--app-text-muted, #64748b)", fontSize: 13, lineHeight: 1.5 }}>No payroll withholding is assumed for contract income. The Annual Tax Estimate tab includes its projected federal income and self-employment taxes.</div> : isOneOff(activeScenario) ? <div style={{ display: "grid", gap: 3 }}><ResultLine label="Estimated federal withholding" value={money(activeScenario.federalWithholdingPerPaycheck || activeScenario.inputs.annualSalary * 0.22)} /><ResultLine label="Estimated state withholding" value={activeStateEstimate === null ? "Not available" : money(activeStateEstimate)} /></div> : <ScenarioResult result={activeResult} />}
           <p style={{ margin: "8px 0 0", color: "var(--app-text-muted, #64748b)", fontSize: 12, lineHeight: 1.5 }}>Federal estimates use the 2026 IRS payroll withholding method. Enter state and local tax from a paystub or official state calculator.</p>
         </section>
