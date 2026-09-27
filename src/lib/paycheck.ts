@@ -184,6 +184,11 @@ export function estimateStateWithholding(state: string, taxablePay: number): num
   return null;
 }
 
+export function resolveStateWithholding(state: string, taxablePay: number, override: number): number | null {
+  const enteredAmount = nonNegative(override);
+  return enteredAmount > 0 ? roundCents(enteredAmount) : estimateStateWithholding(state, taxablePay);
+}
+
 const roundCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 const nonNegative = (value: number) => Math.max(0, Number.isFinite(value) ? value : 0);
 

@@ -4,7 +4,7 @@ import { cloudStorageEnabled, loadCloudPaycheckPlan, saveCloudPaycheckPlan } fro
 import {
   estimateAnnualFederalTax,
   estimatePaycheck,
-  estimateStateWithholding,
+  resolveStateWithholding,
   type FilingStatus,
   type PayFrequency,
   type PaycheckInputs,
@@ -226,7 +226,15 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
     const annualSalary = scenario.incomeType === "hourly" ? scenario.hourlyRate * scenario.hoursPerWeek * 52 : scenario.inputs.annualSalary;
     const withoutState = { ...scenario.inputs, annualSalary, stateWithholdingPerPaycheck: 0 };
     const preliminary = estimatePaycheck(withoutState);
-    return { ...withoutState, stateWithholdingPerPaycheck: estimateStateWithholding(scenario.state, preliminary.grossPay + withoutState.imputedIncomePerPaycheck) ?? 0 };
+    const estimatedStateWithholding = resolveStateWithholding(
+      scenario.state,
+      preliminary.grossPay + withoutState.imputedIncomePerPaycheck,
+      scenario.inputs.stateWithholdingPerPaycheck,
+    );
+    return {
+      ...withoutState,
+      stateWithholdingPerPaycheck: estimatedStateWithholding ?? 0,
+    };
   };
   const activeResult = useMemo(() => estimatePaycheck(resolvedInputs(activeScenario)), [activeScenario]);
 
@@ -303,7 +311,11 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
     const end = scenario.endDate || "Ongoing";
     return `${start} – ${end}`;
   };
-  const activeStateEstimate = estimateStateWithholding(activeScenario.state, isOneOff(activeScenario) ? activeScenario.inputs.annualSalary : activeResult.grossPay + activeScenario.inputs.imputedIncomePerPaycheck);
+  const activeStateEstimate = resolveStateWithholding(
+    activeScenario.state,
+    isOneOff(activeScenario) ? activeScenario.inputs.annualSalary : activeResult.grossPay + activeScenario.inputs.imputedIncomePerPaycheck,
+    activeScenario.inputs.stateWithholdingPerPaycheck,
+  );
 
   const annualTotals = useMemo(() => {
     const yearStart = new Date(2026, 0, 1);
@@ -390,8 +402,9 @@ export function PaycheckPage({ onClose, userId }: { onClose: () => void; userId:
               <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Federal filing status</span><select value={activeScenario.inputs.filingStatus} onChange={(event) => updateInputs("filingStatus", event.target.value as FilingStatus)} style={controlStyle}><option value="single">Single or married filing separately</option><option value="married">Married filing jointly</option><option value="head">Head of household</option></select></label>
               <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Work state</span><select value={activeScenario.state} onChange={(event) => updateScenario({ state: event.target.value })} style={controlStyle}>{STATES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
               <div style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Estimated state withholding</span><div style={{ ...controlStyle, color: "var(--app-text-muted, #64748b)" }}>{activeStateEstimate === null ? "Automatic estimate not yet available for this state" : money(activeStateEstimate)}</div></div>
+              <NumericField label="State and local withholding override (0 uses estimate)" prefix="$" value={activeScenario.inputs.stateWithholdingPerPaycheck} onChange={(value) => updateInputs("stateWithholdingPerPaycheck", value)} />
             </div>
-            <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 700 }}>Additional income and withholding adjustments</summary><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 12 }}><NumericField label={isOneOff(activeScenario) ? "Federal tax withheld from this payment" : "Federal tax withheld per paycheck (optional override)"} prefix="$" value={activeScenario.federalWithholdingPerPaycheck} onChange={(federalWithholdingPerPaycheck) => updateScenario({ federalWithholdingPerPaycheck })} /><NumericField label="Other annual income used for withholding" prefix="$" value={activeScenario.inputs.w4OtherIncome} onChange={(value) => updateInputs("w4OtherIncome", value)} /><NumericField label="Extra tax per paycheck" prefix="$" value={activeScenario.inputs.w4AdditionalWithholding} onChange={(value) => updateInputs("w4AdditionalWithholding", value)} /></div></details>
+            <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 700 }}>Additional income and withholding adjustments</summary><div style={{ display: "grid", gap: 12, marginTop: 12 }}><label style={{ display: "flex", gap: 9, alignItems: "center", fontSize: 14 }}><input type="checkbox" checked={activeScenario.inputs.w4Step2Checked} onChange={(event) => updateInputs("w4Step2Checked", event.target.checked)} />Use higher withholding for multiple jobs or a working spouse</label><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}><NumericField label={isOneOff(activeScenario) ? "Federal tax withheld from this payment" : "Federal tax withheld per paycheck (optional override)"} prefix="$" value={activeScenario.federalWithholdingPerPaycheck} onChange={(federalWithholdingPerPaycheck) => updateScenario({ federalWithholdingPerPaycheck })} /><NumericField label="Annual tax credits" prefix="$" value={activeScenario.inputs.w4Credits} onChange={(value) => updateInputs("w4Credits", value)} /><NumericField label="Other annual income used for withholding" prefix="$" value={activeScenario.inputs.w4OtherIncome} onChange={(value) => updateInputs("w4OtherIncome", value)} /><NumericField label="Additional annual deductions" prefix="$" value={activeScenario.inputs.w4Deductions} onChange={(value) => updateInputs("w4Deductions", value)} /><NumericField label="Extra tax per paycheck" prefix="$" value={activeScenario.inputs.w4AdditionalWithholding} onChange={(value) => updateInputs("w4AdditionalWithholding", value)} /></div></div></details>
           </div>
 
           <details style={{ border: "1px solid var(--app-border, #e2e8f0)", borderRadius: 12, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 750 }}>Add pre-tax benefits</summary>
