@@ -118,6 +118,10 @@ type LoanSnapshot = {
   cardMinimumMode?: "percent" | "fixed";
   cardMinimumPercent?: string;
   cardMinimumFloor?: string;
+  postPromoMinimumMode?: "percent" | "fixed";
+  postPromoMinimumPercent?: string;
+  postPromoMinimumFloor?: string;
+  postPromoFixedMinimum?: string;
   cardStatementDate?: string;
   creditCardTransactions?: SerializedPaymentEvent[];
   activeView: "assumed" | "history" | "whatif";
@@ -1327,6 +1331,10 @@ export default function LoanInterestSimulatorMockup() {
   const [cardMinimumMode, setCardMinimumMode] = useState<"percent" | "fixed">("percent");
   const [cardMinimumPercent, setCardMinimumPercent] = useState("2");
   const [cardMinimumFloor, setCardMinimumFloor] = useState("25");
+  const [postPromoMinimumMode, setPostPromoMinimumMode] = useState<"percent" | "fixed">("percent");
+  const [postPromoMinimumPercent, setPostPromoMinimumPercent] = useState("2");
+  const [postPromoMinimumFloor, setPostPromoMinimumFloor] = useState("25");
+  const [postPromoFixedMinimum, setPostPromoFixedMinimum] = useState("");
   const [cardStatementDate, setCardStatementDate] = useState("");
   const [creditCardTransactions, setCreditCardTransactions] = useState<PaymentEvent[]>([]);
   const [startingPrincipal, setStartingPrincipal] = useState("");
@@ -1429,6 +1437,10 @@ export default function LoanInterestSimulatorMockup() {
       minimumPercent: Number(cardMinimumPercent) || 0,
       minimumFloor: parseCurrency(cardMinimumFloor),
       fixedMinimum: parseCurrency(minimumPayment),
+      postPromoMinimumMode,
+      postPromoMinimumPercent: Number(postPromoMinimumPercent) || 0,
+      postPromoMinimumFloor: parseCurrency(postPromoMinimumFloor),
+      postPromoFixedMinimum: parseCurrency(postPromoFixedMinimum),
       extraPayment: parseCurrency(deferredAdditionalMonthlyPayment),
       promoType,
       promoEndDate: promoEndDate ? parseDate(promoEndDate) ?? undefined : undefined,
@@ -1460,6 +1472,10 @@ export default function LoanInterestSimulatorMockup() {
     cardMinimumMode: "percent",
     cardMinimumPercent: "2",
     cardMinimumFloor: "25",
+    postPromoMinimumMode: "percent",
+    postPromoMinimumPercent: "2",
+    postPromoMinimumFloor: "25",
+    postPromoFixedMinimum: "",
     cardStatementDate: "",
     creditCardTransactions: [],
     activeView: "assumed",
@@ -1578,6 +1594,10 @@ export default function LoanInterestSimulatorMockup() {
     setCardMinimumMode(snapshot.cardMinimumMode ?? "percent");
     setCardMinimumPercent(snapshot.cardMinimumPercent ?? "2");
     setCardMinimumFloor(snapshot.cardMinimumFloor ?? "25");
+    setPostPromoMinimumMode(snapshot.postPromoMinimumMode ?? "percent");
+    setPostPromoMinimumPercent(snapshot.postPromoMinimumPercent ?? "2");
+    setPostPromoMinimumFloor(snapshot.postPromoMinimumFloor ?? "25");
+    setPostPromoFixedMinimum(snapshot.postPromoFixedMinimum ?? "");
     setCardStatementDate(snapshot.cardStatementDate ?? "");
     setCreditCardTransactions((snapshot.creditCardTransactions ?? []).map(deserializePaymentEvent));
     setLoanName(snapshot.loanName);
@@ -1646,6 +1666,10 @@ export default function LoanInterestSimulatorMockup() {
     cardMinimumMode,
     cardMinimumPercent,
     cardMinimumFloor,
+    postPromoMinimumMode,
+    postPromoMinimumPercent,
+    postPromoMinimumFloor,
+    postPromoFixedMinimum,
     cardStatementDate,
     activeView,
     additionalMonthlyPayment,
@@ -3749,6 +3773,7 @@ export default function LoanInterestSimulatorMockup() {
                   <CurrencyField label="Monthly extra payment" id="additional-monthly-payment" value={additionalMonthlyPayment} onChange={setAdditionalMonthlyPayment} />
                   {accountType === "loan" ? <Field label="Recurring due day" id="due-day" value={dueDay} onChange={setDueDay} /> : <div style={{ fontSize: 12, color: currentTheme.textMuted }}>The projected minimum is recalculated from the balance each month.</div>}
                   </div>
+                  {accountType === "credit-card" && promoType !== "none" ? <div style={{ display: "grid", gap: 10, padding: 12, borderRadius: 10, background: currentTheme.surfaceMuted, border: `1px solid ${currentTheme.cardBorder}` }}><strong style={{ fontSize: 13 }}>Payment rule after promotion ends</strong><span style={{ fontSize: 12, color: currentTheme.textMuted }}>Set the recurring minimum that begins after the 0% or deferred-interest period. This is separate from the promotional minimum above.</span><label style={{ display: "grid", gap: 6, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 650 }}>Post-promotion minimum</span><select value={postPromoMinimumMode} onChange={(event) => setPostPromoMinimumMode(event.target.value as "percent" | "fixed")} style={{ boxSizing: "border-box", width: "100%", minWidth: 0, border: `1px solid ${currentTheme.cardBorder}`, borderRadius: 10, padding: "10px 12px", background: currentTheme.surface, color: currentTheme.text }}><option value="percent">Percentage of balance</option><option value="fixed">Fixed amount</option></select></label>{postPromoMinimumMode === "percent" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, minWidth: 0 }}><Field label="Percent after promotion" id="post-promo-percent" value={postPromoMinimumPercent} onChange={setPostPromoMinimumPercent} /><CurrencyField label="Minimum floor after promotion" id="post-promo-floor" value={postPromoMinimumFloor} onChange={setPostPromoMinimumFloor} /></div> : <CurrencyField label="Fixed minimum after promotion" id="post-promo-fixed" value={postPromoFixedMinimum} onChange={setPostPromoFixedMinimum} />}</div> : null}
                 </FormSection>
                 {accountType === "loan" ? <FormSection title="Accrual / calendar behavior" helper="These rules control how scheduled dates and daily interest are calculated.">
                   <label style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14, color: currentTheme.text }}>

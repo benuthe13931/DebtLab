@@ -11,6 +11,10 @@ type CardScheduleInput = {
   minimumPercent: number;
   minimumFloor: number;
   fixedMinimum: number;
+  postPromoMinimumMode: "percent" | "fixed";
+  postPromoMinimumPercent: number;
+  postPromoMinimumFloor: number;
+  postPromoFixedMinimum: number;
   extraPayment: number;
   promoType: "none" | "zero" | "deferred";
   promoEndDate?: Date;
@@ -46,7 +50,10 @@ export function buildCreditCardSchedule(input: CardScheduleInput): ScheduleResul
     if (promoActive && input.promoType === "deferred") shadowDeferredInterest += monthlyInterest;
     else interest += monthlyInterest;
     if (input.promoEndDate && input.promoType === "deferred" && due >= input.promoEndDate && shadowDeferredInterest > 0) { interest += shadowDeferredInterest; shadowDeferredInterest = 0; }
-    const minimum = input.minimumMode === "percent" ? Math.max(input.minimumFloor, principal * input.minimumPercent / 100) : input.fixedMinimum;
+    const postPromo = Boolean(input.promoEndDate && !promoActive && input.promoType !== "none");
+    const minimum = postPromo
+      ? input.postPromoMinimumMode === "percent" ? Math.max(input.postPromoMinimumFloor, principal * input.postPromoMinimumPercent / 100) : input.postPromoFixedMinimum
+      : input.minimumMode === "percent" ? Math.max(input.minimumFloor, principal * input.minimumPercent / 100) : input.fixedMinimum;
     const payment = Math.min(principal + interest, Math.max(0, minimum + input.extraPayment));
     const interestPaid = Math.min(payment, interest);
     const principalPaid = Math.min(principal, Math.max(0, payment - interestPaid));
