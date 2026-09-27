@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ninjaTraderSemiMonthly } from "./fixtures/paycheck/ninjatrader-semi-monthly.mjs";
+import { ninjaTraderSemiMonthly } from "../../fixtures/paycheck/ninjatrader-semi-monthly.mjs";
 import {
   estimatePaycheck,
   estimateStateWithholding,
   resolveStateWithholding,
-} from "../src/calculations/paycheck/paycheck.ts";
-import { estimateAnnualFederalTax } from "../src/calculations/tax/annualFederalTax.ts";
+} from "../../../src/calculations/paycheck/paycheck.ts";
+import { estimateAnnualFederalTax } from "../../../src/calculations/tax/annualFederalTax.ts";
 
 const paycheckInputs = (overrides = {}) => ({
   annualSalary: 75_000,

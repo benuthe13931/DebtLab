@@ -4,12 +4,9 @@ import { cloudStorageEnabled, loadCloudPaycheckPlan, saveCloudPaycheckPlan } fro
 import {
   estimatePaycheck,
   resolveStateWithholding,
-  type FilingStatus,
-  type PayFrequency,
-  type PaycheckInputs,
-  type PaycheckResult,
 } from "../calculations/paycheck/paycheck";
 import { estimateAnnualFederalTax } from "../calculations/tax/annualFederalTax";
+import type { FilingStatus, PayFrequency, PaycheckInputs, PaycheckResult } from "../types/paycheck";
 
 export type PaycheckScenario = {
   endDate: string;
