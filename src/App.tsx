@@ -1139,6 +1139,8 @@ function FormSection({
     <div
       style={{
         display: "grid",
+        alignContent: "start",
+        alignItems: "start",
         gap: 12,
         padding: 14,
         borderRadius: 14,
