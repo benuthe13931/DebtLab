@@ -207,4 +207,24 @@ export interface LoanSimulatorRuntime {
   deleteHelperDueDayChange?: (id: string) => void;
   addOneOffPayment?: () => void;
   resetHelper?: () => void;
+  assumedResult: ScheduleResult;
+  amortizationProjection: ScheduleResult;
+  historyResult: ScheduleResult;
+  helperProjection: ScheduleResult;
+  whatIfProjection: ScheduleResult;
+  loanInputsReady: boolean;
+  historyErrors: string[];
+  canShowAssumedSchedule: boolean;
+  setShowAmortization: Dispatch<SetStateAction<boolean>>;
+  showAmortization: boolean;
+  setShowHelperAmortization: Dispatch<SetStateAction<boolean>>;
+  showHelperAmortization: boolean;
+  startEditingReplayRow: (row: import("./loans").ScheduleRow) => void;
+  saveEditedPayment: () => void;
+  cancelEditingPayment: () => void;
+  deleteHelperRow: (id: string) => void;
+  deleteWhatIfPayment: (id: string) => void;
+  deleteWhatIfRecurringChange: (id: string) => void;
+  deleteWhatIfDueDayChange: (id: string) => void;
+  deleteWhatIfPausePeriod: (id: string) => void;
 }
