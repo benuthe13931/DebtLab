@@ -345,48 +345,12 @@ export function useLoanPersistence(context: LoanSimulatorRuntime) {
       };
     }
 
-    try {
-      const rawProfiles = localStorage.getItem(USER_PROFILES_STORAGE_KEY);
-      const parsedProfiles = rawProfiles ? (JSON.parse(rawProfiles) as Partial<UserProfile>[]) : [];
-      const validProfiles = Array.isArray(parsedProfiles)
-        ? parsedProfiles.map((profile) => ({
-            displayName: profile.displayName ?? profile.name ?? "",
-            email: profile.email ?? "",
-            id: profile.id ?? `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            name: profile.name ?? "",
-            password: profile.password ?? "",
-            passwordResetCode: profile.passwordResetCode,
-            passwordResetIssuedAt: profile.passwordResetIssuedAt,
-            themeId: profile.themeId ?? "sky",
-          }))
-          .map((profile) => normalizeProfile(profile as UserProfile))
-        : [];
-      setUserProfiles(validProfiles);
-
-      const storedCurrentUserId = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-      const initialUserId =
-        storedCurrentUserId && validProfiles.some((profile) => profile.id === storedCurrentUserId)
-          ? storedCurrentUserId
-          : validProfiles[0]?.id ?? null;
-
-      if (!initialUserId) {
-        setCurrentUserId(null);
-        setSavedLoans([]);
-        setCurrentLoanId(null);
-        applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
-        return;
-      }
-
-      setCurrentUserId(initialUserId);
-      localStorage.setItem(CURRENT_USER_STORAGE_KEY, initialUserId);
-      loadLoansForUser(initialUserId);
-    } catch {
-      setUserProfiles([]);
-      setCurrentUserId(null);
-      setSavedLoans([]);
-      setCurrentLoanId(null);
-      applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
-    }
+    setUserProfiles([]);
+    setCurrentUserId(null);
+    setSavedLoans([]);
+    setCurrentLoanId(null);
+    applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
+    setSaveStatus("Supabase authentication is required. Configure Supabase to continue.");
   }, []);
 
   const persistSavedLoans = (nextLoans: SavedLoanRecord[], userId = currentUserId) => {
@@ -448,7 +412,7 @@ export function useLoanPersistence(context: LoanSimulatorRuntime) {
     const trimmedName = authName.trim();
     const trimmedDisplayName = authDisplayName.trim();
     if (!trimmedName || !authPassword) {
-      setAuthError(`Enter both an ${cloudStorageEnabled ? "email" : "username"} and password.`);
+      setAuthError(`Enter your email and password.`);
       return;
     }
 
@@ -479,36 +443,7 @@ export function useLoanPersistence(context: LoanSimulatorRuntime) {
       return;
     }
 
-    if (authMode === "create") {
-      const existingUser = userProfiles.find((profile) => profile.name.toLowerCase() === trimmedName.toLowerCase());
-      if (existingUser) {
-        setAuthError("That username already exists.");
-        return;
-      }
-      const nextProfile: UserProfile = {
-        displayName: trimmedDisplayName || trimmedName,
-        email: "",
-        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name: trimmedName,
-        password: authPassword,
-        themeId: "sky",
-      };
-      const nextProfiles = [...userProfiles, nextProfile];
-      persistUserProfiles(nextProfiles);
-      setUserProfiles(nextProfiles);
-      applyLoanSnapshot(createBlankLoanSnapshot(todayValue));
-      setSavedLoans([]);
-      setCurrentLoanId(null);
-      loginUser(nextProfile.id, nextProfile.name);
-      return;
-    }
-
-    const matchingUser = userProfiles.find((profile) => profile.name.toLowerCase() === trimmedName.toLowerCase());
-    if (!matchingUser || matchingUser.password !== authPassword) {
-      setAuthError("Invalid username or password.");
-      return;
-    }
-    loginUser(matchingUser.id, matchingUser.name);
+    setAuthError("Supabase authentication is required. Configure Supabase to continue.");
   };
 
   const logoutUser = () => {
@@ -605,61 +540,19 @@ export function useLoanPersistence(context: LoanSimulatorRuntime) {
       setProfileStatus("Add an email address before requesting a password reset.");
       return;
     }
-    if (cloudStorageEnabled) {
-      void sendCloudPasswordResetEmail(email)
-        .then(() => {
-          setProfileDraftEmail(email);
-          setProfileStatus(`Password reset email sent to ${email}. Follow the Supabase email link to finish.`);
-        })
-        .catch((error) => {
-          setProfileStatus(error instanceof Error ? error.message : "Could not send password reset email.");
-        });
-      return;
-    }
-    const resetCode = `${Math.floor(100000 + Math.random() * 900000)}`;
-    updateCurrentUserProfile((profile) => ({
-      ...profile,
-      email,
-      passwordResetCode: resetCode,
-      passwordResetIssuedAt: new Date().toISOString(),
-    }));
-    setProfileDraftEmail(email);
-    setPasswordResetCodeInput("");
-    setPasswordResetNewPassword("");
-    setPasswordResetConfirmPassword("");
-    setProfileStatus(`Password reset email sent to ${email}. Local demo code: ${resetCode}`);
+    void sendCloudPasswordResetEmail(email)
+      .then(() => {
+        setProfileDraftEmail(email);
+        setProfileStatus(`Password reset email sent to ${email}. Follow the Supabase email link to finish.`);
+      })
+      .catch((error) => {
+        setProfileStatus(error instanceof Error ? error.message : "Could not send password reset email.");
+      });
   };
 
   const applyPasswordReset = () => {
-    if (!currentUser) return;
-    if (cloudStorageEnabled) {
-      setProfileStatus("Use the Supabase password reset email link to change your password.");
-      return;
-    }
-    if (!currentUser.passwordResetCode) {
-      setProfileStatus("Request a password reset email first.");
-      return;
-    }
-    if (passwordResetCodeInput.trim() !== currentUser.passwordResetCode) {
-      setProfileStatus("The one-time reset code is invalid.");
-      return;
-    }
-    if (!passwordResetNewPassword || passwordResetNewPassword !== passwordResetConfirmPassword) {
-      setProfileStatus("New passwords must match.");
-      return;
-    }
-    updateCurrentUserProfile((profile) => ({
-      ...profile,
-      password: passwordResetNewPassword,
-      passwordResetCode: undefined,
-      passwordResetIssuedAt: undefined,
-    }));
-    setPasswordResetCodeInput("");
-    setPasswordResetNewPassword("");
-    setPasswordResetConfirmPassword("");
-    setProfileStatus("Password updated.");
+    setProfileStatus("Use the Supabase password reset email link to change your password.");
   };
-
   const saveCurrentLoan = () => {
     if (!currentUserId) {
       window.alert("Create or select a profile before saving a loan.");
@@ -734,6 +627,11 @@ export function useLoanPersistence(context: LoanSimulatorRuntime) {
 
   return { serializePaymentEvent, deserializePaymentEvent, serializeRecurringChange, deserializeRecurringChange, serializePausePeriod, deserializePausePeriod, serializeDueDayChange, deserializeDueDayChange, applyLoanSnapshot, buildLoanSnapshot, loadLoansForUser, persistSavedLoans, persistUserProfiles, updateCurrentUserProfile, loginUser, handleAuthSubmit, logoutUser, deleteCurrentUserProfile, saveProfileDetails, applyThemeToProfile, sendPasswordResetEmail, applyPasswordReset, saveCurrentLoan, startNewLoan, loadSavedLoan, deleteLoan };
 }
+
+
+
+
+
 
 
 

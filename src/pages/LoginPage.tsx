@@ -60,10 +60,15 @@ export function LoginPage({
           <div style={{ color: "#475569", fontSize: 14, lineHeight: 1.5 }}>
             {cloudStorageEnabled
               ? "Sign in with Supabase to sync saved loans across browsers and devices."
-              : "Sign in to your local account to access your saved loans, or create a new user to start tracking a different set of loans."}
+              : "Configure Supabase authentication to sign in and access your saved loans."}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        {!cloudStorageEnabled ? (
+          <div style={{ border: "1px solid #fecaca", background: "#fff1f2", color: "#991b1b", borderRadius: 10, padding: "10px 12px", fontSize: 13 }}>
+            Supabase is not configured for this deployment. Authentication is unavailable until the Vercel Supabase environment variables are set.
+          </div>
+        ) : null}
+        <div style={{ display: cloudStorageEnabled ? "flex" : "none", gap: 10 }}>
           <button
             type="button"
             onClick={() => { onAuthModeChange("login"); onAuthErrorChange(""); onAuthDisplayNameChange(""); }}
@@ -97,9 +102,9 @@ export function LoginPage({
             Create account
           </button>
         </div>
-        <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: cloudStorageEnabled ? "grid" : "none", gap: 12 }}>
           {authMode === "create" ? <Field id="auth-display-name" label="Your name" value={authDisplayName} onChange={onAuthDisplayNameChange} /> : null}
-          <Field id="auth-name" label={cloudStorageEnabled ? "Email" : "Username"} value={authName} onChange={onAuthNameChange} />
+          <Field id="auth-name" label="Email" value={authName} onChange={onAuthNameChange} />
           <Field id="auth-password" label="Password" type="password" value={authPassword} onChange={onAuthPasswordChange} />
           {authError ? (
             <div style={{ border: "1px solid #fecaca", background: "#fff1f2", color: "#991b1b", borderRadius: 10, padding: "10px 12px", fontSize: 13 }}>

@@ -18,42 +18,12 @@ import { Field } from "../../components/ui/Field";
 
 
 
-import {
-  cloudStorageEnabled } from
-
-
-
-
-
-
-
-
-
-
-"../../lib/cloudStorage";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { formatCurrency, formatMonthYear } from "../../utils/formatting";
 import { THEME_DEFINITIONS, type ThemeId } from "../../constants/theme";
 
 
 export function LoanSimulatorChrome({ runtime }: {runtime: LoanSimulatorRuntime;}) {
-  const { currentUserId, activePage, setActivePage, setActiveLoanTab, profileMenuOpen, setProfileMenuOpen, setDeleteAccountConfirmOpen, profileMenuRef, profileDraftName, setProfileDraftName, profileDraftEmail, setProfileDraftEmail, profileStatus, passwordResetCodeInput, setPasswordResetCodeInput, passwordResetNewPassword, setPasswordResetNewPassword, passwordResetConfirmPassword, setPasswordResetConfirmPassword, savedLoans, saveStatus, setActiveView, currentUser, currentTheme, firstName, profileInitial, logoutUser, saveProfileDetails, applyThemeToProfile, sendPasswordResetEmail, applyPasswordReset, headerLoans = [], headerProjection = { startingTotal: 0, payoffDate: null }, headerProgress = 0 } = runtime;
+  const { currentUserId, activePage, setActivePage, setActiveLoanTab, profileMenuOpen, setProfileMenuOpen, setDeleteAccountConfirmOpen, profileMenuRef, profileDraftName, setProfileDraftName, profileDraftEmail, setProfileDraftEmail, profileStatus, savedLoans, saveStatus, setActiveView, currentUser, currentTheme, firstName, profileInitial, logoutUser, saveProfileDetails, applyThemeToProfile, sendPasswordResetEmail, headerLoans = [], headerProjection = { startingTotal: 0, payoffDate: null }, headerProgress = 0 } = runtime;
   return (
     <>
               <header style={{ display: "flex", gap: 20, alignItems: "center", justifyContent: "space-between", textAlign: "left" }}>
@@ -246,45 +216,6 @@ export function LoanSimulatorChrome({ runtime }: {runtime: LoanSimulatorRuntime;
                 
                           Email password-reset link
                         </button>
-                        {!cloudStorageEnabled ? <div style={{ display: "grid", gap: 14 }}>
-                          <Field
-                  id="password-reset-code"
-                  label="One-time reset code"
-                  value={passwordResetCodeInput}
-                  onChange={setPasswordResetCodeInput} />
-                
-                          <Field
-                  id="password-reset-new"
-                  label="New password"
-                  type="password"
-                  value={passwordResetNewPassword}
-                  onChange={setPasswordResetNewPassword} />
-                
-                          <Field
-                  id="password-reset-confirm"
-                  label="Confirm new password"
-                  type="password"
-                  value={passwordResetConfirmPassword}
-                  onChange={setPasswordResetConfirmPassword} />
-                
-                          <button
-                  type="button"
-                  onClick={() => { void applyPasswordReset?.(); }}
-                  style={{
-                    border: `1px solid ${currentTheme.accent}`,
-                    background: currentTheme.accent,
-                    color: "#ffffff",
-                    borderRadius: 10,
-                    padding: "10px 14px",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    justifySelf: "start"
-                  }}>
-                  
-                            Change password
-                          </button>
-                        </div> : null}
                       </div>
                     </div>
       
@@ -364,5 +295,8 @@ export function LoanSimulatorChrome({ runtime }: {runtime: LoanSimulatorRuntime;
     </>);
 
 }
+
+
+
 
 
