@@ -59,7 +59,10 @@ export function simulatePortfolio(
       balances.set(loan.id, balance - payment);
       spent += payment;
     }
-    if (strategy !== "minimum") {
+    // A strategy may redirect freed minimum payments only when the user has
+    // explicitly entered an extra monthly amount. With $0 extra, every plan
+    // must remain a literal minimum-payment plan.
+    if (strategy !== "minimum" && extra > 0) {
       let remaining = Math.max(0, fixedBudget - spent);
       const ordered = [...loans].sort((a, b) => strategy === "avalanche"
         ? b.apr - a.apr || a.balance - b.balance

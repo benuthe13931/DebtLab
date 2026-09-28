@@ -30,6 +30,17 @@ test("portfolio reports negative amortization instead of implying a payoff", () 
   assert.equal(result.payoffDate, null);
 });
 
+test("zero extra means avalanche and snowball use literal minimums", () => {
+  const avalanche = simulatePortfolio(loans, "avalanche", 0);
+  const snowball = simulatePortfolio(loans, "snowball", 0);
+  const minimum = simulatePortfolio(loans, "minimum", 0);
+
+  assert.equal(avalanche.months, minimum.months);
+  assert.equal(snowball.months, minimum.months);
+  assert.equal(avalanche.totalInterest, minimum.totalInterest);
+  assert.equal(snowball.totalInterest, minimum.totalInterest);
+});
+
 test("avalanche and snowball target the expected balances in the first monthly snapshot", () => {
   const avalanche = simulatePortfolio(loans, "avalanche", 100);
   const snowball = simulatePortfolio(loans, "snowball", 100);
