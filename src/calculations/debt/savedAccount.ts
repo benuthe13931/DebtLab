@@ -55,8 +55,16 @@ export function estimateSavedLoanBalance(data: LoanSnapshot) {
 
 export function estimateSavedAccountMinimum(data: LoanSnapshot): number {
   if (data.accountType !== "credit-card") return parseCurrency(data.minimumPayment) + parseCurrency(data.additionalMonthlyPayment);
-  const balance = parseCurrency(data.startingPrincipal);
-  const percentMinimum = Math.max(parseCurrency(data.cardMinimumFloor ?? "0"), balance * (Number(data.cardMinimumPercent) || 0) / 100);
-  return (data.cardMinimumMode === "fixed" ? parseCurrency(data.minimumPayment) : percentMinimum) + parseCurrency(data.additionalMonthlyPayment);
+  const balance = estimateSavedLoanBalance(data);
+  const target = parseDate(data.targetDate ?? "");
+  const promoEnd = parseDate(data.promoEndDate ?? "");
+  const promoActive = Boolean(target && promoEnd && data.promoType !== "none" && target <= promoEnd);
+  const mode = promoActive ? data.cardMinimumMode ?? "percent" : data.postPromoMinimumMode ?? data.cardMinimumMode ?? "percent";
+  const percent = promoActive ? Number(data.cardMinimumPercent) || 0 : Number(data.postPromoMinimumPercent ?? data.cardMinimumPercent) || 0;
+  const floor = promoActive ? parseCurrency(data.cardMinimumFloor ?? "0") : parseCurrency(data.postPromoMinimumFloor ?? data.cardMinimumFloor ?? "0");
+  const minimum = mode === "fixed"
+    ? promoActive ? parseCurrency(data.minimumPayment) : parseCurrency(data.postPromoFixedMinimum ?? data.minimumPayment)
+    : Math.max(floor, balance * percent / 100);
+  return minimum + parseCurrency(data.additionalMonthlyPayment);
 }
 
