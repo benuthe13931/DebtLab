@@ -1,15 +1,15 @@
-// @ts-nocheck
 import type { LoanSimulatorRuntime } from "../../types/loanSimulatorRuntime";
+import type { DueDayChange, PausePeriod, PaymentEvent, ScheduleRow } from "../../types/loans";
 import { parseCurrency } from "../../utils/currency";
 import { compareDateOnly, monthValue, parseMonthInput } from "../../utils/date";
 import { clampToMonth, parseDate, toDateInputValue } from "../../calculations/loans/dateUtils";
 
-function pausePeriodsOverlap(left: { startMonth: Date; endMonth: Date }, right: { startMonth: Date; endMonth: Date }) {
+function pausePeriodsOverlap(left: {startMonth: Date;endMonth: Date;}, right: {startMonth: Date;endMonth: Date;}) {
   return left.startMonth <= right.endMonth && right.startMonth <= left.endMonth;
 }
 
 export function useLoanActions(context: LoanSimulatorRuntime) {
-  const { userProfiles, setUserProfiles, currentUserId, setCurrentUserId, authMode, setAuthMode, authName, setAuthName, authDisplayName, setAuthDisplayName, authPassword, setAuthPassword, authError, setAuthError, activePage, setActivePage, activeLoanTab, setActiveLoanTab, loanSidebarCollapsed, setLoanSidebarCollapsed, profileMenuOpen, setProfileMenuOpen, deleteAccountConfirmOpen, setDeleteAccountConfirmOpen, profileMenuRef, profileDraftName, setProfileDraftName, profileDraftEmail, setProfileDraftEmail, profileStatus, setProfileStatus, passwordResetCodeInput, setPasswordResetCodeInput, passwordResetNewPassword, setPasswordResetNewPassword, passwordResetConfirmPassword, setPasswordResetConfirmPassword, savedLoans, setSavedLoans, currentLoanId, setCurrentLoanId, saveStatus, setSaveStatus, loanName, setLoanName, accountType, setAccountType, promoType, setPromoType, promoEndDate, setPromoEndDate, cardMinimumMode, setCardMinimumMode, cardMinimumPercent, setCardMinimumPercent, cardMinimumFloor, setCardMinimumFloor, postPromoMinimumMode, setPostPromoMinimumMode, postPromoMinimumPercent, setPostPromoMinimumPercent, postPromoMinimumFloor, setPostPromoMinimumFloor, postPromoFixedMinimum, setPostPromoFixedMinimum, cardStatementDate, setCardStatementDate, creditCardTransactions, setCreditCardTransactions, startingPrincipal, setStartingPrincipal, startingPrincipalDate, setStartingPrincipalDate, firstPaymentDate, setFirstPaymentDate, minimumPayment, setMinimumPayment, additionalMonthlyPayment, setAdditionalMonthlyPayment, aprPercent, setAprPercent, dueDay, setDueDay, targetDate, setTargetDate, moveWeekend, setMoveWeekend, roundDailyInterest, setRoundDailyInterest, dayCountBasis, setDayCountBasis, activeView, setActiveView, showAmortization, setShowAmortization, showHelperAmortization, setShowHelperAmortization, oneOffPayments, setOneOffPayments, newOneOffDate, setNewOneOffDate, newOneOffAmount, setNewOneOffAmount, newOneOffLabel, setNewOneOffLabel, helperPausePeriods, setHelperPausePeriods, helperPauseFromMonth, setHelperPauseFromMonth, helperPauseToMonth, setHelperPauseToMonth, helperPauseMode, setHelperPauseMode, helperBulkMode, setHelperBulkMode, helperAdjustmentFromMonth, setHelperAdjustmentFromMonth, helperAdjustmentToMonth, setHelperAdjustmentToMonth, helperAdjustmentAmount, setHelperAdjustmentAmount, helperRecurringChanges, setHelperRecurringChanges, helperDueDayChanges, setHelperDueDayChanges, helperAdjustmentDueDay, setHelperAdjustmentDueDay, deletedHelperRowIds, setDeletedHelperRowIds, helperActionError, setHelperActionError, helperPaymentAmountOverrides, setHelperPaymentAmountOverrides, paymentDateOverrides, setPaymentDateOverrides, paymentLabelOverrides, setPaymentLabelOverrides, editingPaymentId, setEditingPaymentId, editingPaymentDate, setEditingPaymentDate, editingPaymentAmount, setEditingPaymentAmount, editingPaymentLabel, setEditingPaymentLabel, whatIfPayments, setWhatIfPayments, whatIfRecurringChanges, setWhatIfRecurringChanges, whatIfPausePeriods, setWhatIfPausePeriods, whatIfEntryMode, setWhatIfEntryMode, newWhatIfDate, setNewWhatIfDate, newWhatIfAmount, setNewWhatIfAmount, newWhatIfLabel, setNewWhatIfLabel, whatIfAdjustmentDate, setWhatIfAdjustmentDate, whatIfAdjustmentEndDate, setWhatIfAdjustmentEndDate, whatIfAdjustmentAmount, setWhatIfAdjustmentAmount, whatIfAdjustmentDueDay, setWhatIfAdjustmentDueDay, whatIfDueDayChanges, setWhatIfDueDayChanges, whatIfPauseFromMonth, setWhatIfPauseFromMonth, whatIfPauseToMonth, setWhatIfPauseToMonth, whatIfPauseMode, setWhatIfPauseMode, whatIfActionError, setWhatIfActionError, showHistoricalDetails, setShowHistoricalDetails, showFutureDetails, setShowFutureDetails, showLifetimeDetails, setShowLifetimeDetails, showComparisonDetails, setShowComparisonDetails, cardScheduleStart, cardScheduleFirstPayment, cardScheduleTarget, deferredStartingPrincipal, deferredStartingPrincipalDate, deferredFirstPaymentDate, deferredMinimumPayment, deferredAdditionalMonthlyPayment, deferredAprPercent, deferredDueDay, deferredTargetDate, cardMinimumPayment, cardProjectionNudge, effectiveMinimumPayment, totalMonthlyPayment, buildProjection, todayDate, todayValue, getSavedLoansStorageKey, currentUser, currentTheme, displayName, firstName, profileInitial, serializePaymentEvent, deserializePaymentEvent, serializeRecurringChange, deserializeRecurringChange, serializePausePeriod, deserializePausePeriod, serializeDueDayChange, deserializeDueDayChange, applyLoanSnapshot, buildLoanSnapshot, loadLoansForUser, persistSavedLoans, persistUserProfiles, updateCurrentUserProfile, loginUser, handleAuthSubmit, logoutUser, deleteCurrentUserProfile, saveProfileDetails, applyThemeToProfile, sendPasswordResetEmail, applyPasswordReset, saveCurrentLoan, startNewLoan, loadSavedLoan, deleteLoan, projectionContext, helperVisiblePayments, helperPaymentsThroughTarget, helperPausePeriodsThroughTarget, helperScheduledAdjustments, helperDueDayAdjustments, assumedResult, minimumOnlyToDateProjection, amortizationTargetDate, fullLoanTargetDate, assumedCurrentPlanProjection, amortizationProjection, minimumOnlyFullProjection, assumedFullProjection, historyResult, helperAmortizationTargetDate, helperProjection, helperCurrentPlanProjection, whatIfTargetDate, nextPaymentDate, whatIfAllPayments, whatIfRecurringAdjustments, whatIfDueDayAdjustments, whatIfProjection, loanInputsReady, historyErrors, assumedInterestSaved, minimumOnlyLifetimeInterest, assumedInterestSavedAsOfToday, assumedInterestSavedFromTodayForward, helperInterestSavedAsOfToday, helperInterestSavedOverall, helperInterestSavedFromTodayForward, assumedInterestStillOwedWithAdditional, helperTotalExpectedInterestPaidIncludingAdditional, whatIfTotalExpectedInterestPaidIncludingAdditionalMonthly, whatIfTotalExpectedInterestPaidIncludingAnticipated, whatIfHasProjectedExtras, assumedScenarioLifetimeInterest, assumedScenarioLifetimeSaved, assumedScenarioRemainingInterest, assumedScenarioRemainingSaved, helperScenarioLifetimeInterest, helperScenarioLifetimeSaved, helperScenarioRemainingInterest, helperScenarioRemainingSaved, minimumOnlyRemainingInterest, whatIfBaseRemainingInterest, whatIfBaseLifetimeInterest, whatIfProjectedExtrasSavedRemaining, whatIfScenarioRemainingInterest, whatIfScenarioLifetimeInterest, whatIfScenarioSaved, startingPrincipalAmount, assumedPayoffPercent, historyPayoffPercent, activePayoffPercent, activeProjectedPayoffDate, canShowAssumedSchedule, baselinePayoffDate, activeAsOfDate, projectedScenarioPrincipalForDailyCost, activeInterestStartDate, activeInterestEndDate, activeDailyInterestCost, activePayoffDuration, baselinePayoffDeltaMonths, activeTimeSavedLabel, assumedReferenceRow, historyReferenceRow, whatIfReferenceRow, activeReferenceRow, activePrincipalShare, activeInterestShare, softDangerMessage, whatIfDeltaInterest, whatIfBaselinePayoffDate, whatIfDeltaMonths, whatIfTimeChangeLabel, assumedLifetimeSavedTone, helperLifetimeSavedTone, whatIfLifetimeSavedTone, assumedRemainingInterestNotes, assumedRemainingSavedNotes, assumedLifetimeSavedNotes, helperRemainingInterestNotes, helperRemainingSavedNotes, helperLifetimeSavedNotes, whatIfRemainingInterestNotes, whatIfAdditionalSavedNotes, whatIfLifetimeSavedNotes, footnote2Text, assumedHasNegativeAmortization, historyHasNegativeAmortization, whatIfHasNegativeAmortization, negativeAmortizationWarning, startingPrincipalDateValue, minimumTargetDate, targetDateMinValue, helperMaxMonthValue, whatIfMinimumPaymentDate, whatIfMinDate, whatIfMinDateValue } = context;
+  const { dueDay, targetDate, setOneOffPayments, newOneOffDate, setNewOneOffDate, newOneOffAmount, setNewOneOffAmount, newOneOffLabel, setNewOneOffLabel, helperPausePeriods, setHelperPausePeriods, helperPauseFromMonth, setHelperPauseFromMonth, helperPauseToMonth, setHelperPauseToMonth, helperPauseMode, setHelperPauseMode, helperBulkMode, setHelperBulkMode, helperAdjustmentFromMonth, setHelperAdjustmentFromMonth, helperAdjustmentToMonth, setHelperAdjustmentToMonth, helperAdjustmentAmount, setHelperAdjustmentAmount, setHelperRecurringChanges, setHelperDueDayChanges, helperAdjustmentDueDay, setHelperAdjustmentDueDay, setDeletedHelperRowIds, setHelperActionError, setHelperPaymentAmountOverrides, setPaymentDateOverrides, setPaymentLabelOverrides, editingPaymentId, setEditingPaymentId, editingPaymentDate, setEditingPaymentDate, editingPaymentAmount, setEditingPaymentAmount, editingPaymentLabel, setEditingPaymentLabel, setWhatIfPayments, setWhatIfRecurringChanges, whatIfPausePeriods, setWhatIfPausePeriods, whatIfEntryMode, setWhatIfEntryMode, newWhatIfDate, setNewWhatIfDate, newWhatIfAmount, setNewWhatIfAmount, newWhatIfLabel, setNewWhatIfLabel, whatIfAdjustmentDate, setWhatIfAdjustmentDate, whatIfAdjustmentEndDate, setWhatIfAdjustmentEndDate, whatIfAdjustmentAmount, setWhatIfAdjustmentAmount, whatIfAdjustmentDueDay, setWhatIfAdjustmentDueDay, setWhatIfDueDayChanges, whatIfPauseFromMonth, setWhatIfPauseFromMonth, whatIfPauseToMonth, setWhatIfPauseToMonth, whatIfPauseMode, setWhatIfPauseMode, setWhatIfActionError, todayDate } = context;
   const addHelperPausePeriod = () => {
     const startMonth = parseMonthInput(helperPauseFromMonth);
     const endMonth = parseMonthInput(helperPauseToMonth);
@@ -22,7 +22,7 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
       endMonth,
       id: `helper-pause-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       mode: helperPauseMode,
-      startMonth,
+      startMonth
     };
     const hasOverlap = helperPausePeriods.some((pausePeriod) => pausePeriodsOverlap(pausePeriod, nextPausePeriod));
     if (hasOverlap) {
@@ -31,10 +31,10 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
     }
 
     setHelperPausePeriods((current) =>
-      [
-        ...current,
-        nextPausePeriod,
-      ].sort((a, b) => a.startMonth.getTime() - b.startMonth.getTime()),
+    [
+    ...current,
+    nextPausePeriod].
+    sort((a, b) => a.startMonth.getTime() - b.startMonth.getTime())
     );
     setHelperActionError("");
     setHelperPauseFromMonth("");
@@ -56,7 +56,7 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
       const startMonth = parseMonthInput(helperAdjustmentFromMonth);
       const endMonth = parseMonthInput(helperAdjustmentToMonth);
       const day = Number(helperAdjustmentDueDay);
-      if (!startMonth || (helperAdjustmentToMonth && !endMonth) || (endMonth && endMonth < startMonth) || day < 1 || day > 31) {
+      if (!startMonth || helperAdjustmentToMonth && !endMonth || endMonth && endMonth < startMonth || day < 1 || day > 31) {
         setHelperActionError("Choose a valid due day and month range.");
         return;
       }
@@ -64,7 +64,7 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
         day,
         endMonth: endMonth ?? undefined,
         id: `helper-due-day-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        startMonth,
+        startMonth
       };
       setHelperDueDayChanges((current) => [...current, nextChange].sort((a, b) => a.startMonth.getTime() - b.startMonth.getTime()));
       setHelperActionError("");
@@ -82,16 +82,16 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
     }
 
     setHelperRecurringChanges((current) =>
-      [
-        ...current,
-        {
-          amount,
-          effectiveDate: startMonth,
-          endDate: endMonth,
-          id: `helper-adjust-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          kind: helperBulkMode,
-        },
-      ].sort((a, b) => a.effectiveDate.getTime() - b.effectiveDate.getTime()),
+    [
+    ...current,
+    {
+      amount,
+      effectiveDate: startMonth,
+      endDate: endMonth,
+      id: `helper-adjust-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      kind: helperBulkMode
+    }].
+    sort((a, b) => a.effectiveDate.getTime() - b.effectiveDate.getTime())
     );
     setHelperAdjustmentFromMonth("");
     setHelperAdjustmentToMonth("");
@@ -123,11 +123,11 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
       date,
       id: `oneoff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       label: newOneOffLabel.trim() || "Extra payment",
-      source: "extra",
+      source: "extra"
     };
 
     setOneOffPayments((current) =>
-      [...current, newPayment].sort((a, b) => a.date.getTime() - b.date.getTime()),
+    [...current, newPayment].sort((a, b) => a.date.getTime() - b.date.getTime())
     );
     setHelperActionError("");
     setNewOneOffDate("");
@@ -156,11 +156,11 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
 
     setPaymentDateOverrides((current) => ({
       ...current,
-      [editingPaymentId]: toDateInputValue(parsed),
+      [editingPaymentId]: toDateInputValue(parsed)
     }));
     setHelperPaymentAmountOverrides((current) => ({
       ...current,
-      [editingPaymentId]: parsedAmount.toFixed(2),
+      [editingPaymentId]: parsedAmount.toFixed(2)
     }));
     setPaymentLabelOverrides((current) => {
       const trimmed = editingPaymentLabel.trim();
@@ -171,7 +171,7 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
       }
       return {
         ...current,
-        [editingPaymentId]: trimmed,
+        [editingPaymentId]: trimmed
       };
     });
 
@@ -190,7 +190,7 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
   };
 
   const deleteHelperRow = (rowId: string) => {
-    setDeletedHelperRowIds((current) => (current.includes(rowId) ? current : [...current, rowId]));
+    setDeletedHelperRowIds((current) => current.includes(rowId) ? current : [...current, rowId]);
     if (editingPaymentId === rowId) {
       cancelEditingPayment();
     }
@@ -208,7 +208,7 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
         endMonth,
         id: `whatif-pause-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         mode: whatIfPauseMode,
-        startMonth,
+        startMonth
       };
       const hasOverlap = whatIfPausePeriods.some((pausePeriod) => pausePeriodsOverlap(pausePeriod, nextPausePeriod));
       if (hasOverlap) {
@@ -216,10 +216,10 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
         return;
       }
       setWhatIfPausePeriods((current) =>
-        [
-          ...current,
-          nextPausePeriod,
-        ].sort((a, b) => a.startMonth.getTime() - b.startMonth.getTime()),
+      [
+      ...current,
+      nextPausePeriod].
+      sort((a, b) => a.startMonth.getTime() - b.startMonth.getTime())
       );
       setWhatIfActionError("");
       setWhatIfPauseFromMonth("");
@@ -233,7 +233,7 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
       const endMonth = parseMonthInput(whatIfAdjustmentEndDate);
       const day = Number(whatIfAdjustmentDueDay);
       const currentTarget = parseDate(targetDate);
-      if (!startMonth || (whatIfAdjustmentEndDate && !endMonth) || (endMonth && endMonth < startMonth) || day < 1 || day > 31) {
+      if (!startMonth || whatIfAdjustmentEndDate && !endMonth || endMonth && endMonth < startMonth || day < 1 || day > 31) {
         setWhatIfActionError("Choose a valid due day and month range.");
         return;
       }
@@ -244,15 +244,15 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
         return;
       }
       setWhatIfDueDayChanges((current) =>
-        [
-          ...current,
-          {
-            day,
-            endMonth: endMonth ?? undefined,
-            id: `whatif-due-day-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            startMonth,
-          },
-        ].sort((a, b) => a.startMonth.getTime() - b.startMonth.getTime()),
+      [
+      ...current,
+      {
+        day,
+        endMonth: endMonth ?? undefined,
+        id: `whatif-due-day-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        startMonth
+      }].
+      sort((a, b) => a.startMonth.getTime() - b.startMonth.getTime())
       );
       setWhatIfActionError("");
       setWhatIfAdjustmentDate("");
@@ -265,20 +265,20 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
       const startMonth = parseMonthInput(whatIfAdjustmentDate);
       const amount = parseCurrency(whatIfAdjustmentAmount);
       const currentTarget = parseDate(targetDate);
-      const start = startMonth
-        ? clampToMonth(startMonth.getFullYear(), startMonth.getMonth(), Number(dueDay) || 1)
-        : null;
-      if (!start || amount <= 0 || (currentTarget && start <= currentTarget)) {
+      const start = startMonth ?
+      clampToMonth(startMonth.getFullYear(), startMonth.getMonth(), Number(dueDay) || 1) :
+      null;
+      if (!start || amount <= 0 || currentTarget && start <= currentTarget) {
         setWhatIfActionError("Choose a valid future month and amount.");
         return;
       }
       setWhatIfRecurringChanges((current) =>
-        [...current, {
-          amount,
-          effectiveDate: start,
-          id: `change-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          kind: (whatIfEntryMode === "minimum" ? "minimum" : "monthly-extra") as "minimum" | "monthly-extra",
-        }].sort((a, b) => a.effectiveDate.getTime() - b.effectiveDate.getTime()),
+      [...current, {
+        amount,
+        effectiveDate: start,
+        id: `change-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        kind: (whatIfEntryMode === "minimum" ? "minimum" : "monthly-extra") as "minimum" | "monthly-extra"
+      }].sort((a, b) => a.effectiveDate.getTime() - b.effectiveDate.getTime())
       );
       setWhatIfActionError("");
       setWhatIfAdjustmentDate("");
@@ -290,7 +290,7 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
     const date = parseDate(newWhatIfDate);
     const amount = parseCurrency(newWhatIfAmount);
     const currentTarget = parseDate(targetDate);
-    if (!date || amount <= 0 || (currentTarget && date <= currentTarget)) {
+    if (!date || amount <= 0 || currentTarget && date <= currentTarget) {
       setWhatIfActionError("Choose a valid future payment date and amount.");
       return;
     }
@@ -304,11 +304,11 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
       date,
       id: `whatif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       label: newWhatIfLabel.trim() || "Anticipated one-time payment",
-      source: "extra",
+      source: "extra"
     };
 
     setWhatIfPayments((current) =>
-      [...current, payment].sort((a, b) => a.date.getTime() - b.date.getTime()),
+    [...current, payment].sort((a, b) => a.date.getTime() - b.date.getTime())
     );
     setWhatIfActionError("");
     setNewWhatIfDate("");
@@ -379,7 +379,4 @@ export function useLoanActions(context: LoanSimulatorRuntime) {
 
   return { addHelperPausePeriod, deleteHelperPausePeriod, addHelperBulkAdjustment, deleteHelperRecurringChange, deleteHelperDueDayChange, addOneOffPayment, startEditingReplayRow, saveEditedPayment, cancelEditingPayment, deleteHelperRow, addWhatIfPayment, deleteWhatIfPayment, deleteWhatIfRecurringChange, deleteWhatIfDueDayChange, deleteWhatIfPausePeriod, resetHelper, resetWhatIf };
 }
-
-
-
 
