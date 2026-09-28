@@ -1,5 +1,5 @@
 import { estimateSavedLoanBalance as calculateSavedLoanBalance } from "./estimateSavedLoanBalance.ts";
-import { parseDate } from "../loans/dateUtils.ts";
+import { parseDate, toDateInputValue } from "../loans/dateUtils.ts";
 import { parseCurrency } from "../../utils/currency.ts";
 import type { LoanSnapshot } from "../../types/loans";
 import { buildCreditCardSchedule } from "../cards/buildCreditCardSchedule.ts";
@@ -51,6 +51,13 @@ export function estimateSavedLoanBalance(data: LoanSnapshot) {
     startingPrincipalDate: parseDate(data.startingPrincipalDate),
     targetDate: parseDate(data.targetDate),
   });
+}
+
+export function estimateSavedCurrentBalance(data: LoanSnapshot): number {
+  if (typeof data.overviewBalance === "number" && Number.isFinite(data.overviewBalance)) {
+    return Math.max(0, data.overviewBalance);
+  }
+  return estimateSavedLoanBalance({ ...data, targetDate: toDateInputValue(new Date()) });
 }
 
 export function estimateSavedAccountMinimum(data: LoanSnapshot): number {

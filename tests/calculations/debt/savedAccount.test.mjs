@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { estimateSavedAccountMinimum, estimateSavedLoanBalance } from "../../../src/calculations/debt/savedAccount.ts";
+import { estimateSavedAccountMinimum, estimateSavedCurrentBalance, estimateSavedLoanBalance } from "../../../src/calculations/debt/savedAccount.ts";
 
 test("saved credit-card balance uses the post-promotion minimum rule", () => {
   const balance = estimateSavedLoanBalance({
@@ -54,4 +54,19 @@ test("saved credit-card minimum switches after promotion", () => {
   });
 
   assert.equal(minimum, 200);
+});
+
+test("current overview balance does not use a distant projection target", () => {
+  assert.equal(estimateSavedCurrentBalance({
+    accountType: "credit-card",
+    startingPrincipal: "1000",
+    overviewBalance: 1000,
+    targetDate: "2046-01-01",
+    aprPercent: "24",
+    cardMinimumMode: "percent",
+    cardMinimumPercent: "2",
+    cardMinimumFloor: "25",
+    additionalMonthlyPayment: "0",
+    creditCardTransactions: [],
+  }), 1000);
 });
