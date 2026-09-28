@@ -9,7 +9,6 @@ export type HeaderProjection = { startingTotal: number; payoffDate: Date | null 
 
 /** Shared boundary contract for simulator state, projections, and actions. */
 export interface LoanSimulatorRuntime {
-  [key: string]: unknown;
   activePage: "overview" | "simulator" | "paycheck" | "budget" | "profile";
   activeLoanTab: "details" | "transactions" | "history" | "whatif";
   activeView: "assumed" | "history" | "whatif";
@@ -47,6 +46,8 @@ export interface LoanSimulatorRuntime {
   loanSidebarCollapsed: boolean;
   profileInitial: string;
   savedLoans: SavedLoanRecord[];
+  setSavedLoans: Dispatch<SetStateAction<SavedLoanRecord[]>>;
+  setCurrentLoanId: Dispatch<SetStateAction<string | null>>;
   saveStatus: string;
   setActivePage: Dispatch<SetStateAction<LoanSimulatorRuntime["activePage"]>>;
   setCreditCardTransactions: Dispatch<SetStateAction<PaymentEvent[]>>;

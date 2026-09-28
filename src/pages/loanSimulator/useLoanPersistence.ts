@@ -1,23 +1,24 @@
-// @ts-nocheck
 import type { LoanSimulatorRuntime } from "../../types/loanSimulatorRuntime";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { PaycheckPage } from "../PaycheckPage";
-import { DebtOverview } from "../DebtOverviewPage";
-import { BudgetPage } from "../BudgetPage";
-import { DateField, DatePickerInput, MonthYearField } from "../../components/ui/date-fields";
-import { FormSection, SummaryGroupLabel, SummaryValue } from "../../components/ui/summary";
-import { LoanSidebar } from "../../components/loans/LoanSidebar";
-import { CreditCardActivityEditor } from "../../components/loans/CreditCardActivityEditor";
-import { LabelWithNotes, formatPrincipalShare, getEventTypeCode, getEventTypeTitle, getTableRowStyle } from "../../components/loans/schedulePresentation";
-import { CurrencyField, CurrencyInput } from "../../components/ui/CurrencyField";
-import { Field } from "../../components/ui/Field";
-import { LoginPage } from "../LoginPage";
-import { estimateSavedLoanBalance, estimateSavedAccountMinimum } from "../../calculations/debt/savedAccount";
-import { simulatePortfolio } from "../../calculations/debt/simulatePortfolio";
-import { accrueInterest } from "../../calculations/loans/accrueInterest";
-import { addMonths, clampToMonth, formatMonth, parseDate, toDateInputValue } from "../../calculations/loans/dateUtils";
-import { buildSchedule, getNextScheduledPaymentDate } from "../../calculations/loans/schedule";
-import { buildCreditCardSchedule } from "../../calculations/cards/buildCreditCardSchedule";
+import type { DueDayChange, FutureRecurringChange, LoanSnapshot, PausePeriod, PaymentEvent, SerializedDueDayChange, SerializedFutureRecurringChange, SerializedPausePeriod, SerializedPaymentEvent } from "../../types/loans";
+import type { ThemeId } from "../../constants/theme";
+import { useEffect } from "react";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { formatMonth, parseDate, toDateInputValue } from "../../calculations/loans/dateUtils";
+
+
 import {
   cloudStorageEnabled,
   cloudStorageStatus,
@@ -29,27 +30,27 @@ import {
   logoutCloudProfile,
   sendCloudPasswordResetEmail,
   saveCloudLoans,
-  saveCloudProfile,
-} from "../../lib/cloudStorage";
+  saveCloudProfile } from
+"../../lib/cloudStorage";
 import type {
-  DayCountBasis,
-  DueDayChange,
-  FutureRecurringChange,
-  LoanSnapshot,
-  SavedLoanRecord,
-  SerializedDueDayChange,
-  SerializedFutureRecurringChange,
-  SerializedPausePeriod,
-  SerializedPaymentEvent,
-  PaymentEvent,
-  PauseMode,
-  PausePeriod,
-  ScheduleRow,
-} from "../../types/loans";
+
+
+
+
+  SavedLoanRecord } from
+
+
+
+
+
+
+
+
+"../../types/loans";
 import { parseCurrency } from "../../utils/currency";
-import { compareDateOnly, monthValue, parseMonthInput, startOfDay } from "../../utils/date";
-import { formatCurrency, formatDurationToPayoff, formatMonthYear, formatPauseRange, formatPercent, formatTimeShaved, getDifferenceLabel } from "../../utils/formatting";
-import { THEME_DEFINITIONS, type ThemeId } from "../../constants/theme";
+import { parseMonthInput } from "../../utils/date";
+
+
 import { createBlankLoanSnapshot } from "../../constants/loanDefaults";
 import type { UserProfile } from "../../types/profile";
 import { normalizeProfile } from "../../utils/profile";
@@ -57,54 +58,54 @@ import { normalizeProfile } from "../../utils/profile";
 const USER_PROFILES_STORAGE_KEY = "loan-sim:user-profiles";
 const CURRENT_USER_STORAGE_KEY = "loan-sim:current-user";
 
-type PersistenceContext = Omit<LoanSimulatorRuntime, "assumedResult" | "amortizationProjection" | "historyResult" | "helperProjection" | "whatIfProjection" | "loanInputsReady" | "historyErrors" | "canShowAssumedSchedule" | "startEditingReplayRow" | "saveEditedPayment" | "cancelEditingPayment" | "deleteHelperRow" | "deleteWhatIfPayment" | "deleteWhatIfRecurringChange" | "deleteWhatIfDueDayChange" | "deleteWhatIfPausePeriod">;
+type PersistenceContext = Omit<LoanSimulatorRuntime, "assumedResult" | "amortizationProjection" | "historyResult" | "helperProjection" | "whatIfProjection" | "loanInputsReady" | "historyErrors" | "canShowAssumedSchedule" | "startEditingReplayRow" | "saveEditedPayment" | "cancelEditingPayment" | "deleteHelperRow" | "deleteWhatIfPayment" | "deleteWhatIfRecurringChange" | "deleteWhatIfDueDayChange" | "deleteWhatIfPausePeriod" | "nextPaymentDate" | "minimumOnlyLifetimeInterest" | "assumedInterestSavedAsOfToday" | "helperInterestSavedAsOfToday" | "assumedScenarioLifetimeInterest" | "assumedScenarioLifetimeSaved" | "assumedScenarioRemainingInterest" | "assumedScenarioRemainingSaved" | "helperScenarioLifetimeInterest" | "helperScenarioLifetimeSaved" | "helperScenarioRemainingInterest" | "helperScenarioRemainingSaved" | "whatIfProjectedExtrasSavedRemaining" | "whatIfScenarioRemainingInterest" | "whatIfScenarioLifetimeInterest" | "whatIfScenarioSaved" | "activePayoffPercent" | "activeProjectedPayoffDate" | "activeDailyInterestCost" | "activePayoffDuration" | "activeTimeSavedLabel" | "softDangerMessage" | "whatIfDeltaInterest" | "whatIfBaselinePayoffDate" | "whatIfTimeChangeLabel" | "assumedLifetimeSavedTone" | "helperLifetimeSavedTone" | "whatIfLifetimeSavedTone" | "assumedRemainingInterestNotes" | "assumedRemainingSavedNotes" | "assumedLifetimeSavedNotes" | "helperRemainingInterestNotes" | "helperRemainingSavedNotes" | "helperLifetimeSavedNotes" | "whatIfRemainingInterestNotes" | "whatIfAdditionalSavedNotes" | "whatIfLifetimeSavedNotes" | "footnote2Text" | "negativeAmortizationWarning" | "applyLoanSnapshot" | "buildLoanSnapshot" | "serializePaymentEvent" | "deserializePaymentEvent" | "serializeRecurringChange" | "deserializeRecurringChange" | "serializePausePeriod" | "deserializePausePeriod" | "serializeDueDayChange" | "deserializeDueDayChange">;
 
 export function useLoanPersistence(context: PersistenceContext) {
-  const { userProfiles, setUserProfiles, currentUserId, setCurrentUserId, authMode, setAuthMode, authName, setAuthName, authDisplayName, setAuthDisplayName, authPassword, setAuthPassword, authError, setAuthError, activePage, setActivePage, activeLoanTab, setActiveLoanTab, loanSidebarCollapsed, setLoanSidebarCollapsed, profileMenuOpen, setProfileMenuOpen, deleteAccountConfirmOpen, setDeleteAccountConfirmOpen, profileMenuRef, profileDraftName, setProfileDraftName, profileDraftEmail, setProfileDraftEmail, profileStatus, setProfileStatus, passwordResetCodeInput, setPasswordResetCodeInput, passwordResetNewPassword, setPasswordResetNewPassword, passwordResetConfirmPassword, setPasswordResetConfirmPassword, savedLoans, setSavedLoans, currentLoanId, setCurrentLoanId, saveStatus, setSaveStatus, loanName, setLoanName, accountType, setAccountType, promoType, setPromoType, promoEndDate, setPromoEndDate, cardMinimumMode, setCardMinimumMode, cardMinimumPercent, setCardMinimumPercent, cardMinimumFloor, setCardMinimumFloor, postPromoMinimumMode, setPostPromoMinimumMode, postPromoMinimumPercent, setPostPromoMinimumPercent, postPromoMinimumFloor, setPostPromoMinimumFloor, postPromoFixedMinimum, setPostPromoFixedMinimum, cardStatementDate, setCardStatementDate, creditCardTransactions, setCreditCardTransactions, startingPrincipal, setStartingPrincipal, startingPrincipalDate, setStartingPrincipalDate, firstPaymentDate, setFirstPaymentDate, minimumPayment, setMinimumPayment, additionalMonthlyPayment, setAdditionalMonthlyPayment, aprPercent, setAprPercent, dueDay, setDueDay, targetDate, setTargetDate, moveWeekend, setMoveWeekend, roundDailyInterest, setRoundDailyInterest, dayCountBasis, setDayCountBasis, activeView, setActiveView, showAmortization, setShowAmortization, showHelperAmortization, setShowHelperAmortization, oneOffPayments, setOneOffPayments, newOneOffDate, setNewOneOffDate, newOneOffAmount, setNewOneOffAmount, newOneOffLabel, setNewOneOffLabel, helperPausePeriods, setHelperPausePeriods, helperPauseFromMonth, setHelperPauseFromMonth, helperPauseToMonth, setHelperPauseToMonth, helperPauseMode, setHelperPauseMode, helperBulkMode, setHelperBulkMode, helperAdjustmentFromMonth, setHelperAdjustmentFromMonth, helperAdjustmentToMonth, setHelperAdjustmentToMonth, helperAdjustmentAmount, setHelperAdjustmentAmount, helperRecurringChanges, setHelperRecurringChanges, helperDueDayChanges, setHelperDueDayChanges, helperAdjustmentDueDay, setHelperAdjustmentDueDay, deletedHelperRowIds, setDeletedHelperRowIds, helperActionError, setHelperActionError, helperPaymentAmountOverrides, setHelperPaymentAmountOverrides, paymentDateOverrides, setPaymentDateOverrides, paymentLabelOverrides, setPaymentLabelOverrides, editingPaymentId, setEditingPaymentId, editingPaymentDate, setEditingPaymentDate, editingPaymentAmount, setEditingPaymentAmount, editingPaymentLabel, setEditingPaymentLabel, whatIfPayments, setWhatIfPayments, whatIfRecurringChanges, setWhatIfRecurringChanges, whatIfPausePeriods, setWhatIfPausePeriods, whatIfEntryMode, setWhatIfEntryMode, newWhatIfDate, setNewWhatIfDate, newWhatIfAmount, setNewWhatIfAmount, newWhatIfLabel, setNewWhatIfLabel, whatIfAdjustmentDate, setWhatIfAdjustmentDate, whatIfAdjustmentEndDate, setWhatIfAdjustmentEndDate, whatIfAdjustmentAmount, setWhatIfAdjustmentAmount, whatIfAdjustmentDueDay, setWhatIfAdjustmentDueDay, whatIfDueDayChanges, setWhatIfDueDayChanges, whatIfPauseFromMonth, setWhatIfPauseFromMonth, whatIfPauseToMonth, setWhatIfPauseToMonth, whatIfPauseMode, setWhatIfPauseMode, whatIfActionError, setWhatIfActionError, showHistoricalDetails, setShowHistoricalDetails, showFutureDetails, setShowFutureDetails, showLifetimeDetails, setShowLifetimeDetails, showComparisonDetails, setShowComparisonDetails, cardScheduleStart, cardScheduleFirstPayment, cardScheduleTarget, deferredStartingPrincipal, deferredStartingPrincipalDate, deferredFirstPaymentDate, deferredMinimumPayment, deferredAdditionalMonthlyPayment, deferredAprPercent, deferredDueDay, deferredTargetDate, cardMinimumPayment, cardProjectionNudge, effectiveMinimumPayment, totalMonthlyPayment, buildProjection, todayDate, todayValue, getSavedLoansStorageKey, currentUser, currentTheme, displayName, firstName, profileInitial } = context;
+  const { userProfiles, setUserProfiles, currentUserId, setCurrentUserId, authMode, setAuthMode, authName, setAuthName, authDisplayName, setAuthDisplayName, authPassword, setAuthPassword, setAuthError, setActivePage, setActiveLoanTab, setDeleteAccountConfirmOpen, profileDraftName, setProfileDraftName, profileDraftEmail, setProfileDraftEmail, setProfileStatus, setPasswordResetCodeInput, setPasswordResetNewPassword, setPasswordResetConfirmPassword, savedLoans, setSavedLoans, currentLoanId, setCurrentLoanId, setSaveStatus, loanName, setLoanName, accountType, setAccountType, promoType, setPromoType, promoEndDate, setPromoEndDate, cardMinimumMode, setCardMinimumMode, cardMinimumPercent, setCardMinimumPercent, cardMinimumFloor, setCardMinimumFloor, postPromoMinimumMode, setPostPromoMinimumMode, postPromoMinimumPercent, setPostPromoMinimumPercent, postPromoMinimumFloor, setPostPromoMinimumFloor, postPromoFixedMinimum, setPostPromoFixedMinimum, cardStatementDate, setCardStatementDate, creditCardTransactions, setCreditCardTransactions, startingPrincipal, setStartingPrincipal, startingPrincipalDate, setStartingPrincipalDate, firstPaymentDate, setFirstPaymentDate, minimumPayment, setMinimumPayment, additionalMonthlyPayment, setAdditionalMonthlyPayment, aprPercent, setAprPercent, dueDay, setDueDay, targetDate, setTargetDate, moveWeekend, setMoveWeekend, roundDailyInterest, setRoundDailyInterest, dayCountBasis, activeView, setActiveView, setDayCountBasis, showAmortization, setShowAmortization, showHelperAmortization, setShowHelperAmortization, oneOffPayments, setOneOffPayments, newOneOffDate, setNewOneOffDate, newOneOffAmount, setNewOneOffAmount, newOneOffLabel, setNewOneOffLabel, helperPausePeriods, setHelperPausePeriods, helperPauseFromMonth, setHelperPauseFromMonth, helperPauseToMonth, setHelperPauseToMonth, helperPauseMode, setHelperPauseMode, helperBulkMode, setHelperBulkMode, helperAdjustmentFromMonth, setHelperAdjustmentFromMonth, helperAdjustmentToMonth, setHelperAdjustmentToMonth, helperAdjustmentAmount, setHelperAdjustmentAmount, helperRecurringChanges, setHelperRecurringChanges, helperDueDayChanges, setHelperDueDayChanges, helperAdjustmentDueDay, setHelperAdjustmentDueDay, deletedHelperRowIds, setDeletedHelperRowIds, helperActionError, setHelperActionError, helperPaymentAmountOverrides, setHelperPaymentAmountOverrides, paymentDateOverrides, setPaymentDateOverrides, paymentLabelOverrides, setPaymentLabelOverrides, editingPaymentId, setEditingPaymentId, editingPaymentDate, setEditingPaymentDate, editingPaymentAmount, setEditingPaymentAmount, editingPaymentLabel, setEditingPaymentLabel, whatIfPayments, setWhatIfPayments, whatIfRecurringChanges, setWhatIfRecurringChanges, whatIfPausePeriods, setWhatIfPausePeriods, whatIfEntryMode, setWhatIfEntryMode, newWhatIfDate, setNewWhatIfDate, newWhatIfAmount, setNewWhatIfAmount, newWhatIfLabel, setNewWhatIfLabel, whatIfAdjustmentDate, setWhatIfAdjustmentDate, whatIfAdjustmentEndDate, setWhatIfAdjustmentEndDate, whatIfAdjustmentAmount, setWhatIfAdjustmentAmount, whatIfAdjustmentDueDay, setWhatIfAdjustmentDueDay, whatIfDueDayChanges, setWhatIfDueDayChanges, whatIfPauseFromMonth, setWhatIfPauseFromMonth, whatIfPauseToMonth, setWhatIfPauseToMonth, whatIfPauseMode, setWhatIfPauseMode, whatIfActionError, setWhatIfActionError, showHistoricalDetails, setShowHistoricalDetails, showFutureDetails, setShowFutureDetails, showLifetimeDetails, setShowLifetimeDetails, showComparisonDetails, setShowComparisonDetails, todayDate, todayValue, getSavedLoansStorageKey, currentUser } = context;
   const serializePaymentEvent = (payment: PaymentEvent): SerializedPaymentEvent => ({
     ...payment,
-    date: toDateInputValue(payment.date),
+    date: toDateInputValue(payment.date)
   });
 
   const deserializePaymentEvent = (payment: SerializedPaymentEvent): PaymentEvent => ({
     ...payment,
-    date: parseDate(payment.date) ?? todayDate,
+    date: parseDate(payment.date) ?? todayDate
   });
 
   const serializeRecurringChange = (change: FutureRecurringChange): SerializedFutureRecurringChange => ({
     ...change,
     effectiveDate: toDateInputValue(change.effectiveDate),
-    endDate: change.endDate ? toDateInputValue(change.endDate) : undefined,
+    endDate: change.endDate ? toDateInputValue(change.endDate) : undefined
   });
 
   const deserializeRecurringChange = (change: SerializedFutureRecurringChange): FutureRecurringChange => ({
     ...change,
     effectiveDate: parseDate(change.effectiveDate) ?? todayDate,
-    endDate: change.endDate ? parseDate(change.endDate) ?? undefined : undefined,
+    endDate: change.endDate ? parseDate(change.endDate) ?? undefined : undefined
   });
 
   const serializePausePeriod = (pausePeriod: PausePeriod): SerializedPausePeriod => ({
     ...pausePeriod,
     endMonth: formatMonth(pausePeriod.endMonth),
-    startMonth: formatMonth(pausePeriod.startMonth),
+    startMonth: formatMonth(pausePeriod.startMonth)
   });
 
   const deserializePausePeriod = (pausePeriod: SerializedPausePeriod): PausePeriod => ({
     ...pausePeriod,
     endMonth: parseMonthInput(pausePeriod.endMonth) ?? new Date(todayDate.getFullYear(), todayDate.getMonth(), 1),
-    startMonth: parseMonthInput(pausePeriod.startMonth) ?? new Date(todayDate.getFullYear(), todayDate.getMonth(), 1),
+    startMonth: parseMonthInput(pausePeriod.startMonth) ?? new Date(todayDate.getFullYear(), todayDate.getMonth(), 1)
   });
 
   const serializeDueDayChange = (change: DueDayChange): SerializedDueDayChange => ({
     ...change,
     endMonth: change.endMonth ? formatMonth(change.endMonth) : undefined,
-    startMonth: formatMonth(change.startMonth),
+    startMonth: formatMonth(change.startMonth)
   });
 
   const deserializeDueDayChange = (change: SerializedDueDayChange): DueDayChange => ({
     ...change,
     endMonth: change.endMonth ? parseMonthInput(change.endMonth) ?? undefined : undefined,
-    startMonth: parseMonthInput(change.startMonth) ?? new Date(todayDate.getFullYear(), todayDate.getMonth(), 1),
+    startMonth: parseMonthInput(change.startMonth) ?? new Date(todayDate.getFullYear(), todayDate.getMonth(), 1)
   });
 
   const applyLoanSnapshot = (snapshot: LoanSnapshot) => {
@@ -252,7 +253,7 @@ export function useLoanPersistence(context: PersistenceContext) {
     whatIfPausePeriods: whatIfPausePeriods.map(serializePausePeriod),
     whatIfPauseToMonth,
     whatIfPayments: whatIfPayments.map(serializePaymentEvent),
-    whatIfRecurringChanges: whatIfRecurringChanges.map(serializeRecurringChange),
+    whatIfRecurringChanges: whatIfRecurringChanges.map(serializeRecurringChange)
   });
 
   const loadLoansForUser = async (userId: string) => {
@@ -306,10 +307,10 @@ export function useLoanPersistence(context: PersistenceContext) {
   useEffect(() => {
     let isMounted = true;
     console.info(
-      cloudStorageEnabled
-        ? "LoanSim cloud storage enabled: Supabase env vars are present."
-        : "LoanSim local storage mode: VITE_SUPABASE_URL and/or VITE_SUPABASE_ANON_KEY are missing.",
-      cloudStorageStatus,
+      cloudStorageEnabled ?
+      "LoanSim cloud storage enabled: Supabase env vars are present." :
+      "LoanSim local storage mode: VITE_SUPABASE_URL and/or VITE_SUPABASE_ANON_KEY are missing.",
+      cloudStorageStatus
     );
 
     if (cloudStorageEnabled) {
@@ -370,9 +371,9 @@ export function useLoanPersistence(context: PersistenceContext) {
   const persistUserProfiles = (nextProfiles: UserProfile[]) => {
     setUserProfiles(nextProfiles);
     if (cloudStorageEnabled) {
-      const currentProfile = currentUserId
-        ? nextProfiles.find((profile) => profile.id === currentUserId)
-        : nextProfiles[0];
+      const currentProfile = currentUserId ?
+      nextProfiles.find((profile) => profile.id === currentUserId) :
+      nextProfiles[0];
       if (currentProfile) {
         void saveCloudProfile(currentProfile).catch((error) => {
           setProfileStatus(error instanceof Error ? error.message : "Could not sync cloud profile.");
@@ -385,9 +386,9 @@ export function useLoanPersistence(context: PersistenceContext) {
 
   const updateCurrentUserProfile = (updater: (profile: UserProfile) => UserProfile) => {
     if (!currentUserId) return;
-    const nextProfiles = userProfiles.map((profile) => (
-      profile.id === currentUserId ? updater(profile) : profile
-    ));
+    const nextProfiles = userProfiles.map((profile) =>
+    profile.id === currentUserId ? updater(profile) : profile
+    );
     persistUserProfiles(nextProfiles);
   };
 
@@ -424,9 +425,9 @@ export function useLoanPersistence(context: PersistenceContext) {
           setAuthError("Enter your name.");
           return;
         }
-        const profile = authMode === "create"
-          ? await createCloudProfile(trimmedName, authPassword, trimmedDisplayName)
-          : await loginCloudProfile(trimmedName, authPassword);
+        const profile = authMode === "create" ?
+        await createCloudProfile(trimmedName, authPassword, trimmedDisplayName) :
+        await loginCloudProfile(trimmedName, authPassword);
         if (profile.needsEmailConfirmation) {
           setAuthError("Check your email to confirm the account, then log in.");
           setAuthPassword("");
@@ -523,7 +524,7 @@ export function useLoanPersistence(context: PersistenceContext) {
     updateCurrentUserProfile((profile) => ({
       ...profile,
       displayName: trimmedDisplayName,
-      email: trimmedEmail,
+      email: trimmedEmail
     }));
     setProfileStatus("Profile updated.");
   };
@@ -531,7 +532,7 @@ export function useLoanPersistence(context: PersistenceContext) {
   const applyThemeToProfile = (themeId: ThemeId) => {
     updateCurrentUserProfile((profile) => ({
       ...profile,
-      themeId,
+      themeId
     }));
   };
 
@@ -542,14 +543,14 @@ export function useLoanPersistence(context: PersistenceContext) {
       setProfileStatus("Add an email address before requesting a password reset.");
       return;
     }
-    void sendCloudPasswordResetEmail(email)
-      .then(() => {
-        setProfileDraftEmail(email);
-        setProfileStatus(`Password reset email sent to ${email}. Follow the Supabase email link to finish.`);
-      })
-      .catch((error) => {
-        setProfileStatus(error instanceof Error ? error.message : "Could not send password reset email.");
-      });
+    void sendCloudPasswordResetEmail(email).
+    then(() => {
+      setProfileDraftEmail(email);
+      setProfileStatus(`Password reset email sent to ${email}. Follow the Supabase email link to finish.`);
+    }).
+    catch((error) => {
+      setProfileStatus(error instanceof Error ? error.message : "Could not send password reset email.");
+    });
   };
 
   const applyPasswordReset = () => {
@@ -568,15 +569,15 @@ export function useLoanPersistence(context: PersistenceContext) {
         ...snapshot,
         loanName: trimmedName,
         overviewBalance: parseCurrency(startingPrincipal),
-        overviewOriginalBalance: parseCurrency(startingPrincipal),
+        overviewOriginalBalance: parseCurrency(startingPrincipal)
       },
       id: loanId,
-      name: trimmedName,
+      name: trimmedName
     };
 
-    const nextLoans = currentLoanId
-      ? savedLoans.map((loan) => (loan.id === currentLoanId ? nextRecord : loan))
-      : [...savedLoans, nextRecord];
+    const nextLoans = currentLoanId ?
+    savedLoans.map((loan) => loan.id === currentLoanId ? nextRecord : loan) :
+    [...savedLoans, nextRecord];
 
     setLoanName(trimmedName);
     setCurrentLoanId(loanId);
@@ -629,12 +630,6 @@ export function useLoanPersistence(context: PersistenceContext) {
 
   return { serializePaymentEvent, deserializePaymentEvent, serializeRecurringChange, deserializeRecurringChange, serializePausePeriod, deserializePausePeriod, serializeDueDayChange, deserializeDueDayChange, applyLoanSnapshot, buildLoanSnapshot, loadLoansForUser, persistSavedLoans, persistUserProfiles, updateCurrentUserProfile, loginUser, handleAuthSubmit, logoutUser, deleteCurrentUserProfile, saveProfileDetails, applyThemeToProfile, sendPasswordResetEmail, applyPasswordReset, saveCurrentLoan, startNewLoan, loadSavedLoan, deleteLoan };
 }
-
-
-
-
-
-
 
 
 
