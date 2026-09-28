@@ -46,6 +46,11 @@ test("credit card percentage minimum grows with a purchase", () => {
   assert.ok(purchase.rows[0].paymentAmount > baseline.rows[0].paymentAmount);
 });
 
+test("percentage minimum covers monthly interest after promotion", () => {
+  const result = valid({ minimumPercent: 1, minimumFloor: 0, targetDate: d("2026-02-01") });
+  assert.ok(result.rows[0].paymentAmount > 20);
+});
+
 test("standalone payment reduces the balance before the next cycle", () => {
   const result = valid({ targetDate: d("2026-03-01"), transactions: [{ amount: 200, date: d("2026-01-15"), label: "Payment", source: "payment" }] });
   assert.ok(result.rows[0].endingPrincipal < 1_000);
