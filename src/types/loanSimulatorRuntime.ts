@@ -116,6 +116,7 @@ export interface LoanSimulatorRuntime {
   helperAdjustmentDueDay: string;
   setHelperAdjustmentDueDay: Dispatch<SetStateAction<string>>;
   setDeletedHelperRowIds: Dispatch<SetStateAction<string[]>>;
+  helperActionError: string;
   setHelperActionError: Dispatch<SetStateAction<string>>;
   setHelperPaymentAmountOverrides: Dispatch<SetStateAction<Record<string, string>>>;
   setPaymentDateOverrides: Dispatch<SetStateAction<Record<string, string>>>;
@@ -195,4 +196,11 @@ export interface LoanSimulatorRuntime {
   setDayCountBasis: Dispatch<SetStateAction<DayCountBasis>>;
   saveCurrentLoan?: () => void | Promise<void>;
   targetDateMinValue?: string;
+  helperMaxMonthValue?: string;
+  deleteHelperPausePeriod?: (id: string) => void;
+  addHelperBulkAdjustment?: () => void;
+  deleteHelperRecurringChange?: (id: string) => void;
+  deleteHelperDueDayChange?: (id: string) => void;
+  addOneOffPayment?: () => void;
+  resetHelper?: () => void;
 }
