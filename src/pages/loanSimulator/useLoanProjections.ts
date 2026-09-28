@@ -119,7 +119,8 @@ export function useLoanProjections(context: ProjectionContext) {
     deferredDueDay,
     moveWeekend,
     deferredTargetDate,
-    roundDailyInterest]
+    roundDailyInterest,
+    buildProjection]
 
   );
 
@@ -150,7 +151,8 @@ export function useLoanProjections(context: ProjectionContext) {
     roundDailyInterest,
     deferredStartingPrincipal,
     deferredStartingPrincipalDate,
-    deferredTargetDate]
+    deferredTargetDate,
+    buildProjection]
 
   );
 
@@ -214,7 +216,8 @@ export function useLoanProjections(context: ProjectionContext) {
   moveWeekend,
   roundDailyInterest,
   deferredTargetDate,
-  totalMonthlyPayment]
+  totalMonthlyPayment,
+  buildProjection]
   );
 
   const amortizationProjection = assumedCurrentPlanProjection;
@@ -245,7 +248,8 @@ export function useLoanProjections(context: ProjectionContext) {
     moveWeekend,
     roundDailyInterest,
     deferredStartingPrincipal,
-    deferredStartingPrincipalDate]
+    deferredStartingPrincipalDate,
+    buildProjection]
 
   );
 
@@ -275,7 +279,8 @@ export function useLoanProjections(context: ProjectionContext) {
     roundDailyInterest,
     deferredStartingPrincipal,
     deferredStartingPrincipalDate,
-    totalMonthlyPayment]
+    totalMonthlyPayment,
+    buildProjection]
 
   );
 
@@ -321,7 +326,8 @@ export function useLoanProjections(context: ProjectionContext) {
     deferredStartingPrincipal,
     deferredStartingPrincipalDate,
     deferredTargetDate,
-    totalMonthlyPayment]
+    totalMonthlyPayment,
+    buildProjection]
 
   );
 
@@ -391,7 +397,8 @@ export function useLoanProjections(context: ProjectionContext) {
   roundDailyInterest,
   deferredTargetDate,
   totalMonthlyPayment,
-  dayCountBasis]
+  dayCountBasis,
+  buildProjection]
   );
 
   const helperCurrentPlanProjection = useMemo(() => {
@@ -453,7 +460,8 @@ export function useLoanProjections(context: ProjectionContext) {
   helperScheduledAdjustments,
   roundDailyInterest,
   deferredTargetDate,
-  totalMonthlyPayment]
+  totalMonthlyPayment,
+  buildProjection]
   );
 
   const whatIfTargetDate = useMemo(() => {
@@ -586,7 +594,8 @@ export function useLoanProjections(context: ProjectionContext) {
   totalMonthlyPayment,
   whatIfAllPayments,
   whatIfRecurringAdjustments,
-  whatIfTargetDate]
+  whatIfTargetDate,
+  buildProjection]
   );
 
   const loanInputsReady = parseCurrency(deferredStartingPrincipal) > 0 && parseCurrency(effectiveMinimumPayment) > 0 && Boolean(parseDate(deferredStartingPrincipalDate)) && Boolean(parseDate(deferredFirstPaymentDate));
