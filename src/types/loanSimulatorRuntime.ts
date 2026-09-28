@@ -156,6 +156,10 @@ export interface LoanSimulatorRuntime {
   whatIfPauseMode: "accrues" | "paused";
   setWhatIfPauseMode: Dispatch<SetStateAction<"accrues" | "paused">>;
   setWhatIfActionError: Dispatch<SetStateAction<string>>;
+  whatIfActionError: string;
+  whatIfMinDateValue?: string;
+  addWhatIfPayment?: () => void;
+  resetWhatIf?: () => void;
   loanName: string;
   setLoanName: Dispatch<SetStateAction<string>>;
   accountType: "loan" | "credit-card";
