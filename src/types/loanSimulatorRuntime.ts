@@ -1,6 +1,7 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { ThemeDefinition, ThemeId } from "../constants/theme";
-import type { PaymentEvent, SavedLoanRecord } from "./loans";
+import type { DayCountBasis, DueDayChange, FutureRecurringChange, PausePeriod, PaymentEvent, SavedLoanRecord, ScheduleResult } from "./loans";
+import type { buildSchedule } from "../calculations/loans/schedule";
 import type { UserProfile } from "./profile";
 
 export type HeaderLoan = { id: string; name: string; balance: number; apr: number; minimum: number };
@@ -57,4 +58,36 @@ export interface LoanSimulatorRuntime {
   startNewLoan?: (type?: "loan" | "credit-card") => void;
   loadSavedLoan?: (id: string) => void;
   profileMenuRef: RefObject<HTMLDivElement | null>;
+  startingPrincipalDate: string;
+  minimumPayment: string;
+  additionalMonthlyPayment: string;
+  dueDay: string;
+  targetDate: string;
+  moveWeekend: boolean;
+  roundDailyInterest: boolean;
+  dayCountBasis: DayCountBasis;
+  oneOffPayments: PaymentEvent[];
+  helperPausePeriods: PausePeriod[];
+  helperRecurringChanges: FutureRecurringChange[];
+  helperDueDayChanges: DueDayChange[];
+  deletedHelperRowIds: string[];
+  helperPaymentAmountOverrides: Record<string, string>;
+  paymentDateOverrides: Record<string, string>;
+  paymentLabelOverrides: Record<string, string>;
+  whatIfPayments: PaymentEvent[];
+  whatIfRecurringChanges: FutureRecurringChange[];
+  whatIfPausePeriods: PausePeriod[];
+  whatIfDueDayChanges: DueDayChange[];
+  deferredStartingPrincipal: string;
+  deferredStartingPrincipalDate: string;
+  deferredFirstPaymentDate: string;
+  deferredAdditionalMonthlyPayment: string;
+  deferredAprPercent: string;
+  deferredDueDay: string;
+  deferredTargetDate: string;
+  effectiveMinimumPayment: string;
+  totalMonthlyPayment: string;
+  buildProjection: (...args: Parameters<typeof buildSchedule>) => ScheduleResult;
+  todayDate: Date;
+  todayValue: string;
 }
