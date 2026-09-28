@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CurrencyField } from "../components/ui/CurrencyField";
 import { SummaryValue } from "../components/ui/summary";
 import { simulatePortfolio, type PortfolioStrategy } from "../calculations/debt/simulatePortfolio";
-import { estimateSavedCurrentBalance, estimateSavedAccountMinimum } from "../calculations/debt/savedAccount";
+import { estimateSavedCurrentBalance, estimateSavedAccountMinimum, estimateSavedAccountMinimumForMonth } from "../calculations/debt/savedAccount";
 import { parseCurrency } from "../utils/currency";
 import { formatCurrency, formatMonthYear, formatPercent } from "../utils/formatting";
 import type { SavedLoanRecord } from "../types/loans";
@@ -18,7 +18,7 @@ export function DebtOverview({ loans, theme, userId }: { loans: SavedLoanRecord[
   const [monthlyIncome, setMonthlyIncome] = useState(0);
   useEffect(() => { localStorage.setItem(budgetKey, JSON.stringify(bills)); }, [budgetKey, bills]);
   useEffect(() => { try { const saved = JSON.parse(localStorage.getItem(`loan-sim:paycheck-scenarios:${userId}`) ?? "null") as { scenarios?: Array<{ incomeType?: string; inputs?: { annualSalary?: number }; hourlyRate?: number; hoursPerWeek?: number }> } | null; const scenarios = saved?.scenarios ?? []; setMonthlyIncome(scenarios.reduce((sum, s) => sum + (s.incomeType === "hourly" ? (s.hourlyRate ?? 0) * (s.hoursPerWeek ?? 0) * 52 / 12 : (s.inputs?.annualSalary ?? 0) / 12), 0)); } catch { setMonthlyIncome(0); } }, [userId]);
-  const portfolioLoans = loans.map((loan) => ({ id: loan.id, name: loan.name, balance: estimateSavedCurrentBalance(loan.data), apr: Number(loan.data.aprPercent) || 0, minimum: estimateSavedAccountMinimum(loan.data) })).filter((loan) => loan.balance > 0 && loan.minimum > 0);
+  const portfolioLoans = loans.map((loan) => ({ id: loan.id, name: loan.name, balance: estimateSavedCurrentBalance(loan.data), apr: Number(loan.data.aprPercent) || 0, minimum: estimateSavedAccountMinimum(loan.data), minimumForMonth: (balance: number, date: Date, accruedInterest: number) => estimateSavedAccountMinimumForMonth(loan.data, balance, date, accruedInterest) })).filter((loan) => loan.balance > 0 && loan.minimum > 0);
   const extra = parseCurrency(extraPayment);
   const results = {
     avalanche: simulatePortfolio(portfolioLoans, "avalanche", extra),

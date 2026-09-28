@@ -5,6 +5,7 @@ export type PortfolioLoan = {
   balance: number;
   id: string;
   minimum: number;
+  minimumForMonth?: (balance: number, date: Date, accruedInterest: number) => number;
   name: string;
 };
 
@@ -29,7 +30,7 @@ export function simulatePortfolio(
 ): PortfolioResult {
   const balances = new Map(loans.map((loan) => [loan.id, loan.balance]));
   const startingTotal = loans.reduce((sum, loan) => sum + loan.balance, 0);
-  const fixedBudget = loans.reduce((sum, loan) => sum + loan.minimum, 0) + (strategy === "minimum" ? 0 : extra);
+  const configuredBudget = loans.reduce((sum, loan) => sum + loan.minimum, 0) + (strategy === "minimum" ? 0 : extra);
   const snapshots: PortfolioSnapshot[] = [];
   let totalInterest = 0;
   let month = 0;
@@ -37,18 +38,24 @@ export function simulatePortfolio(
 
   while ([...balances.values()].some((balance) => balance > 0.005) && month < 1200) {
     month += 1;
+    const monthDate = new Date(new Date().getFullYear(), new Date().getMonth() + month, 1);
     const balancesBeforeInterest = new Map(balances);
+    const monthlyMinimums = new Map<string, number>();
     for (const loan of loans) {
       const balance = balances.get(loan.id) ?? 0;
       if (balance <= 0) continue;
       const interest = balance * loan.apr / 100 / 12;
       balances.set(loan.id, balance + interest);
       totalInterest += interest;
+      monthlyMinimums.set(loan.id, Math.max(0, loan.minimumForMonth?.(balance + interest, monthDate, interest) ?? loan.minimum));
     }
+    const fixedBudget = loans.some((loan) => loan.minimumForMonth)
+      ? [...monthlyMinimums.values()].reduce((sum, minimum) => sum + minimum, 0) + (strategy === "minimum" ? 0 : extra)
+      : configuredBudget;
     let spent = 0;
     for (const loan of loans) {
       const balance = balances.get(loan.id) ?? 0;
-      const payment = Math.min(balance, loan.minimum);
+      const payment = Math.min(balance, monthlyMinimums.get(loan.id) ?? loan.minimum);
       balances.set(loan.id, balance - payment);
       spent += payment;
     }
