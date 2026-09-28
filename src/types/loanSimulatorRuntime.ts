@@ -1,6 +1,10 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import type { ThemeDefinition } from "../constants/theme";
+import type { ThemeDefinition, ThemeId } from "../constants/theme";
 import type { PaymentEvent, SavedLoanRecord } from "./loans";
+import type { UserProfile } from "./profile";
+
+export type HeaderLoan = { id: string; name: string; balance: number; apr: number; minimum: number };
+export type HeaderProjection = { startingTotal: number; payoffDate: Date | null };
 
 /** Shared boundary contract for simulator state, projections, and actions. */
 export interface LoanSimulatorRuntime {
@@ -16,7 +20,29 @@ export interface LoanSimulatorRuntime {
   deleteLoan?: (id: string) => void | Promise<void>;
   displayName: string;
   firstName: string;
-  headerLoans?: unknown[];
+  headerLoans?: HeaderLoan[];
+  headerProjection?: HeaderProjection;
+  headerProgress?: number;
+  currentUserId: string | null;
+  currentUser: UserProfile | null;
+  profileMenuOpen: boolean;
+  setProfileMenuOpen: Dispatch<SetStateAction<boolean>>;
+  profileDraftName: string;
+  setProfileDraftName: Dispatch<SetStateAction<string>>;
+  profileDraftEmail: string;
+  setProfileDraftEmail: Dispatch<SetStateAction<string>>;
+  profileStatus: string;
+  passwordResetCodeInput: string;
+  setPasswordResetCodeInput: Dispatch<SetStateAction<string>>;
+  passwordResetNewPassword: string;
+  setPasswordResetNewPassword: Dispatch<SetStateAction<string>>;
+  passwordResetConfirmPassword: string;
+  setPasswordResetConfirmPassword: Dispatch<SetStateAction<string>>;
+  logoutUser?: () => void | Promise<void>;
+  saveProfileDetails?: () => void | Promise<void>;
+  applyThemeToProfile?: (themeId: ThemeId) => void | Promise<void>;
+  sendPasswordResetEmail?: () => void | Promise<void>;
+  applyPasswordReset?: () => void | Promise<void>;
   loanName: string;
   loanSidebarCollapsed: boolean;
   profileInitial: string;
