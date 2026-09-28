@@ -21,6 +21,15 @@ test("portfolio payoff strategies preserve their baseline interest and duration"
   assert.equal(Math.round(minimum.totalInterest * 100) / 100, 114.84);
 });
 
+test("portfolio reports negative amortization instead of implying a payoff", () => {
+  const result = simulatePortfolio([
+    { apr: 22.74, balance: 9_832.77, id: "card", minimum: 98.33, name: "Chase Ink" },
+  ], "minimum", 0);
+
+  assert.equal(result.negativeAmortization, true);
+  assert.equal(result.payoffDate, null);
+});
+
 test("avalanche and snowball target the expected balances in the first monthly snapshot", () => {
   const avalanche = simulatePortfolio(loans, "avalanche", 100);
   const snowball = simulatePortfolio(loans, "snowball", 100);

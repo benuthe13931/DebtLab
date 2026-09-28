@@ -14,6 +14,7 @@ export type PortfolioSnapshot = {
 };
 
 export type PortfolioResult = {
+  negativeAmortization: boolean;
   months: number;
   payoffDate: Date | null;
   snapshots: PortfolioSnapshot[];
@@ -32,9 +33,11 @@ export function simulatePortfolio(
   const snapshots: PortfolioSnapshot[] = [];
   let totalInterest = 0;
   let month = 0;
+  let negativeAmortization = false;
 
   while ([...balances.values()].some((balance) => balance > 0.005) && month < 1200) {
     month += 1;
+    const balancesBeforeInterest = new Map(balances);
     for (const loan of loans) {
       const balance = balances.get(loan.id) ?? 0;
       if (balance <= 0) continue;
@@ -62,6 +65,11 @@ export function simulatePortfolio(
         if (remaining <= 0.005) break;
       }
     }
+    for (const loan of loans) {
+      if ((balances.get(loan.id) ?? 0) > (balancesBeforeInterest.get(loan.id) ?? 0) + 0.005) {
+        negativeAmortization = true;
+      }
+    }
     if (month <= 12) {
       snapshots.push({
         date: new Date(new Date().getFullYear(), new Date().getMonth() + month, 1),
@@ -71,5 +79,5 @@ export function simulatePortfolio(
   }
 
   const payoffDate = month >= 1200 ? null : new Date(new Date().getFullYear(), new Date().getMonth() + month, 1);
-  return { payoffDate, months: month, snapshots, startingTotal, totalInterest };
+  return { negativeAmortization, payoffDate, months: month, snapshots, startingTotal, totalInterest };
 }
