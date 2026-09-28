@@ -1,8 +1,8 @@
-import { estimateSavedLoanBalance as calculateSavedLoanBalance } from "./estimateSavedLoanBalance";
-import { parseDate } from "../loans/dateUtils";
-import { parseCurrency } from "../../utils/currency";
+import { estimateSavedLoanBalance as calculateSavedLoanBalance } from "./estimateSavedLoanBalance.ts";
+import { parseDate } from "../loans/dateUtils.ts";
+import { parseCurrency } from "../../utils/currency.ts";
 import type { LoanSnapshot } from "../../types/loans";
-import { buildCreditCardSchedule } from "../cards/buildCreditCardSchedule";
+import { buildCreditCardSchedule } from "../cards/buildCreditCardSchedule.ts";
 
 function nextCardPaymentDate(start: Date, dueDay: number): Date {
   const day = Math.min(28, Math.max(1, dueDay || 1));
