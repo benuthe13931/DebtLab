@@ -7,7 +7,9 @@ import { compareDateOnly } from "../../utils/date";
 import { parseCurrency } from "../../utils/currency";
 import { formatDurationToPayoff, formatTimeShaved } from "../../utils/formatting";
 
-export function useLoanProjections(context: LoanSimulatorRuntime) {
+type ProjectionContext = Pick<LoanSimulatorRuntime, "startingPrincipalDate" | "minimumPayment" | "additionalMonthlyPayment" | "dueDay" | "targetDate" | "moveWeekend" | "roundDailyInterest" | "dayCountBasis" | "activeView" | "oneOffPayments" | "helperPausePeriods" | "helperRecurringChanges" | "helperDueDayChanges" | "deletedHelperRowIds" | "helperPaymentAmountOverrides" | "paymentDateOverrides" | "paymentLabelOverrides" | "whatIfPayments" | "whatIfRecurringChanges" | "whatIfPausePeriods" | "whatIfDueDayChanges" | "deferredStartingPrincipal" | "deferredStartingPrincipalDate" | "deferredFirstPaymentDate" | "deferredAdditionalMonthlyPayment" | "deferredAprPercent" | "deferredDueDay" | "deferredTargetDate" | "effectiveMinimumPayment" | "totalMonthlyPayment" | "buildProjection" | "todayDate" | "todayValue">;
+
+export function useLoanProjections(context: ProjectionContext) {
   const { startingPrincipalDate, minimumPayment, additionalMonthlyPayment, dueDay, targetDate, moveWeekend, roundDailyInterest, dayCountBasis, activeView, oneOffPayments, helperPausePeriods, helperRecurringChanges, helperDueDayChanges, deletedHelperRowIds, helperPaymentAmountOverrides, paymentDateOverrides, paymentLabelOverrides, whatIfPayments, whatIfRecurringChanges, whatIfPausePeriods, whatIfDueDayChanges, deferredStartingPrincipal, deferredStartingPrincipalDate, deferredFirstPaymentDate, deferredAdditionalMonthlyPayment, deferredAprPercent, deferredDueDay, deferredTargetDate, effectiveMinimumPayment, totalMonthlyPayment, buildProjection, todayDate, todayValue } = context;
   const helperVisiblePayments = useMemo(() => {
     return [...oneOffPayments].
