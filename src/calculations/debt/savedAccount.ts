@@ -2,23 +2,45 @@ import { estimateSavedLoanBalance as calculateSavedLoanBalance } from "./estimat
 import { parseDate } from "../loans/dateUtils";
 import { parseCurrency } from "../../utils/currency";
 import type { LoanSnapshot } from "../../types/loans";
+import { buildCreditCardSchedule } from "../cards/buildCreditCardSchedule";
+
+function nextCardPaymentDate(start: Date, dueDay: number): Date {
+  const day = Math.min(28, Math.max(1, dueDay || 1));
+  let payment = new Date(start.getFullYear(), start.getMonth(), day);
+  if (payment <= start) payment = new Date(start.getFullYear(), start.getMonth() + 1, day);
+  return payment;
+}
+
 export function estimateSavedLoanBalance(data: LoanSnapshot) {
   if (data.accountType === "credit-card") {
-    let balance = parseCurrency(data.startingPrincipal);
-    const start = parseDate(data.startingPrincipalDate) ?? new Date();
+    const start = parseDate(data.cardStatementDate ?? "") ?? parseDate(data.startingPrincipalDate) ?? new Date();
     const target = parseDate(data.targetDate) ?? new Date();
-    const promoEnd = parseDate(data.promoEndDate ?? "");
-    const months = Math.max(0, (target.getFullYear() - start.getFullYear()) * 12 + target.getMonth() - start.getMonth());
-    const entries = [...(data.creditCardTransactions ?? [])].sort((a, b) => a.date.localeCompare(b.date));
-    for (const entry of entries) { const date = parseDate(entry.date); if (date && date <= target && date >= start) balance += entry.source === "history" ? entry.amount : -entry.amount; }
-    for (let month = 0; month < months && balance > 0; month += 1) {
-      const at = new Date(start.getFullYear(), start.getMonth() + month, 1);
-      const promoActive = promoEnd && data.promoType !== "none" && at <= promoEnd;
-      if (!promoActive || data.promoType === "deferred") balance += balance * (Number(data.aprPercent) || 0) / 100 / 12;
-      const minimum = data.cardMinimumMode === "percent" ? Math.max(parseCurrency(data.cardMinimumFloor ?? "0"), balance * (Number(data.cardMinimumPercent) || 0) / 100) : parseCurrency(data.minimumPayment);
-      balance = Math.max(0, balance - minimum - parseCurrency(data.additionalMonthlyPayment));
-    }
-    return Math.max(0, balance);
+    if (target < start) return parseCurrency(data.startingPrincipal);
+    const firstPayment = parseDate(data.firstPaymentDate) ?? nextCardPaymentDate(start, Number(data.dueDay) || 1);
+    const result = buildCreditCardSchedule({
+      startingPrincipal: parseCurrency(data.startingPrincipal),
+      startingPrincipalDate: start,
+      targetDate: target,
+      firstPaymentDate: firstPayment,
+      dueDay: Number(data.dueDay) || 1,
+      aprPercent: Number(data.aprPercent) || 0,
+      minimumMode: data.cardMinimumMode ?? "percent",
+      minimumPercent: Number(data.cardMinimumPercent) || 0,
+      minimumFloor: parseCurrency(data.cardMinimumFloor ?? "0"),
+      fixedMinimum: parseCurrency(data.minimumPayment),
+      postPromoMinimumMode: data.postPromoMinimumMode ?? "percent",
+      postPromoMinimumPercent: Number(data.postPromoMinimumPercent) || 0,
+      postPromoMinimumFloor: parseCurrency(data.postPromoMinimumFloor ?? "0"),
+      postPromoFixedMinimum: parseCurrency(data.postPromoFixedMinimum ?? ""),
+      extraPayment: parseCurrency(data.additionalMonthlyPayment),
+      promoType: data.promoType ?? "none",
+      promoEndDate: parseDate(data.promoEndDate ?? "") ?? undefined,
+      transactions: (data.creditCardTransactions ?? []).flatMap((entry) => {
+        const date = parseDate(entry.date);
+        return date ? [{ ...entry, date }] : [];
+      }),
+    });
+    return Math.max(0, result.totalBalance);
   }
   return calculateSavedLoanBalance({
     aprPercent: Number(data.aprPercent) || 0,
